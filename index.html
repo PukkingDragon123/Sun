@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a2238" />
+  <title>Sunfish: A Useless Odyssey</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0a2238;
+      overscroll-behavior: none; }
+    canvas { display: block; touch-action: none; -webkit-tap-highlight-color: transparent;
+      cursor: pointer; }
+    #dev { position: fixed; top: 4px; left: 4px; color: #7CFFB2;
+      font: 12px ui-monospace, Menlo, monospace; display: none; pointer-events: none;
+      text-shadow: 0 1px 2px #000; z-index: 9; }
+    #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #cfe7ec; font: 600 16px "Trebuchet MS", system-ui, sans-serif; background: #0a2238;
+      letter-spacing: .3px; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="dev"></div>
+  <div id="boot">hatching a very useless fish…</div>
+  <script type="module">
+    import './js/main.js';
+    // remove the boot splash once the module is live
+    const b = document.getElementById('boot'); if (b) b.remove();
+  </script>
+</body>
+</html>
