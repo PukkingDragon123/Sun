@@ -4,6 +4,17 @@ A hand-painted 2D survival-roguelike. You play the **ocean sunfish (Mola mola)**
 widely libeled as the most useless fish in the sea — dragging your wobbly bulk
 from the **Atlantic to the Pacific** to lay your eggs. The ocean has other plans.
 
+## ▶ Play in your browser (no install)
+
+A single self-contained build lives at [`standalone.html`](standalone.html) — open
+it directly, or play it straight from GitHub via the htmlpreview proxy:
+
+**https://htmlpreview.github.io/?https://raw.githubusercontent.com/PukkingDragon123/Sun/refs/heads/claude/wonderful-allen-v6r65s/standalone.html**
+
+(First load takes a second while htmlpreview fetches the file.) For the cleanest
+result, enable **GitHub Pages** on this branch — see below.
+
+
 > Drag with your finger (or mouse) and the fish follows with smooth spring
 > physics. Flick to dash. Dodge **rocks**, **currents**, **seals**, **jellyfish**
 > and **fishing boats** (their nets *catch* you, their propellers *cut* you).

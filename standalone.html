@@ -1,0 +1,2651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#0a2238" />
+<title>Sunfish: A Useless Odyssey</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0a2238;overscroll-behavior:none}
+canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+#dev{position:fixed;top:4px;left:4px;color:#7CFFB2;font:12px ui-monospace,Menlo,monospace;display:none;pointer-events:none;text-shadow:0 1px 2px #000;z-index:9}
+#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#cfe7ec;font:600 16px "Trebuchet MS",system-ui,sans-serif;background:#0a2238;letter-spacing:.3px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="dev"></div>
+<div id="boot">hatching a very useless fish…</div>
+<script>
+(() => {
+  // js/config.js
+  var REF_H = 720;
+  var STEP = 1e3 / 60;
+  var DPR_CAP = 1.5;
+  var WATER = {
+    surfaceBand: 96,
+    // wavy surface zone from the top
+    seabedBand: 86
+    // sandy floor zone from the bottom
+  };
+  var FISH = {
+    radius: 42,
+    // visible body radius
+    hitboxScale: 0.58,
+    // collision radius = radius * this (player forgiveness)
+    followFreq: 8.6,
+    // spring natural frequency (rad/s) toward pointer
+    maxSpeed: 560,
+    // px/s base cap (upgradable)
+    dragPerSec: 1.7,
+    // velocity damping when no steering input (per s)
+    lookAhead: 150,
+    // keyboard/gamepad steer target distance
+    finFlap: 5.2
+    // fin flap base rate
+  };
+  var DASH = {
+    impulse: 660,
+    // burst velocity added
+    dur: 0.26,
+    // seconds of boosted state
+    cooldown: 1.05,
+    // seconds between dashes
+    iframes: 0.34,
+    // invulnerable seconds during/after dash
+    flickSpeed: 1500,
+    // pointer speed (px/s) that triggers a flick-dash
+    queue: 0.13
+    // input buffer window (s)
+  };
+  var COMBAT = {
+    baseMaxHP: 3,
+    hitIFrames: 1.1,
+    // invulnerable seconds after a hit
+    rockSplatSpeed: 250,
+    // impact speed above which rocks hurt
+    netSnareTime: 2.2,
+    // seconds to be hauled up if you stop struggling
+    netStruggleDrain: 1.9,
+    // struggle meter drained per unit of frantic motion
+    netEscapeIFrames: 0.65
+  };
+  var SEAL = {
+    detectRange: 360,
+    speed: 250,
+    lungeWindup: 0.55,
+    // telegraph before the strike
+    lungeSpeed: 720,
+    lungeDur: 0.42,
+    rest: 1.5,
+    // recover time after a lunge
+    giveUp: 9,
+    // seconds chasing before losing interest
+    damage: 1
+  };
+  var JELLY = { damage: 1, driftSpeed: 26 };
+  var BOAT = {
+    speed: 120,
+    // horizontal cruise (world units/s)
+    hullY: 64,
+    // hull sits near the surface
+    netDepth: 340,
+    // how deep the net hangs below the hull
+    netDamageWhileCaught: 0.018,
+    // hp/sec drained while snared (flavor)
+    propDamage: 2,
+    propRadius: 46
+  };
+  var WORLD = {
+    goalDistance: 9200,
+    // world px from start to spawning ground
+    // zone boundaries as fractions of goalDistance; each zone adds one hazard
+    zones: [
+      { id: "shallows", name: "Atlantic Shallows", end: 0.18, tint: "#1c4a5e" },
+      { id: "drift", name: "The Open Drift", end: 0.42, tint: "#15384f" },
+      { id: "deep", name: "The Cold Deep", end: 0.68, tint: "#0e2942" },
+      { id: "lane", name: "The Shipping Lane", end: 0.9, tint: "#123040" },
+      { id: "spawn", name: "The Spawning Ground", end: 1, tint: "#1d5566" }
+    ]
+  };
+  var UPGRADES = [
+    { id: "vitality", name: "Blubber", desc: "+1 maximum heart", max: 3, baseCost: 14, step: 12 },
+    { id: "grace", name: "Grace", desc: "Swim a little faster", max: 4, baseCost: 10, step: 9 },
+    { id: "dash", name: "Flick Dash", desc: "Unlock & sharpen the dash", max: 3, baseCost: 12, step: 14 },
+    { id: "skin", name: "Slippery Skin", desc: "Wriggle out of nets faster", max: 3, baseCost: 11, step: 10 },
+    { id: "roe", name: "Lucky Roe", desc: "Lay more eggs at the end", max: 4, baseCost: 8, step: 7 }
+  ];
+  var PALETTE = {
+    ink: "#16302f",
+    // wobbly hand-inked dark-teal outline
+    inkSoft: "rgba(22,48,47,0.5)",
+    fishBody: "#cdd7da",
+    // silvery moon-grey
+    fishBelly: "#f2ead7",
+    // warm cream
+    fishShade: "#9fb0b6",
+    hazard: "#4b3f36",
+    // warm charcoal-brown
+    hazardDark: "#33291f",
+    hazardLight: "#6c5a49",
+    amber: "#f6c14b",
+    // pickups & eggs glow
+    amberSoft: "#ffd97a",
+    foam: "#eaf6f7",
+    surfaceTeal: "#3d8aa0",
+    deepNavy: "#0a2238"
+  };
+
+  // js/input.js
+  var KEYDIR = {
+    KeyW: [0, -1],
+    ArrowUp: [0, -1],
+    KeyS: [0, 1],
+    ArrowDown: [0, 1],
+    KeyA: [-1, 0],
+    ArrowLeft: [-1, 0],
+    KeyD: [1, 0],
+    ArrowRight: [1, 0]
+  };
+  var Input = {
+    sx: 0,
+    sy: 0,
+    // pointer position in CSS pixels
+    active: false,
+    // is the fish currently being steered by pointer?
+    hasMouse: false,
+    velX: 0,
+    velY: 0,
+    speed: 0,
+    dir: { x: 0, y: 0 },
+    // keyboard/gamepad steer vector
+    usingPad: false,
+    _isDown: false,
+    _ptype: "mouse",
+    _lx: 0,
+    _ly: 0,
+    _lt: 0,
+    _flickArmed: true,
+    _dashAt: -999,
+    _anyPressed: false,
+    _muteReq: false,
+    _keys: /* @__PURE__ */ new Set(),
+    init(canvas2) {
+      const rect = () => canvas2.getBoundingClientRect();
+      const setPos = (e) => {
+        const r = rect();
+        this.sx = e.clientX - r.left;
+        this.sy = e.clientY - r.top;
+      };
+      canvas2.addEventListener("pointerdown", (e) => {
+        this._ptype = e.pointerType;
+        this._isDown = true;
+        this.active = true;
+        setPos(e);
+        this._lx = this.sx;
+        this._ly = this.sy;
+        this._anyPressed = true;
+        this._tap = { x: this.sx, y: this.sy };
+        try {
+          canvas2.setPointerCapture(e.pointerId);
+        } catch (_) {
+        }
+        e.preventDefault();
+      });
+      canvas2.addEventListener("pointermove", (e) => {
+        this._ptype = e.pointerType;
+        setPos(e);
+        if (e.pointerType === "mouse") {
+          this.hasMouse = true;
+          this.active = true;
+        } else if (this._isDown) this.active = true;
+      });
+      const up = (e) => {
+        this._isDown = false;
+        if (e.pointerType !== "mouse") this.active = false;
+      };
+      canvas2.addEventListener("pointerup", up);
+      canvas2.addEventListener("pointercancel", up);
+      canvas2.addEventListener("pointerleave", (e) => {
+        if (e.pointerType === "mouse") this.active = false;
+      });
+      canvas2.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+      canvas2.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+      addEventListener("keydown", (e) => {
+        if (e.repeat) return;
+        this._keys.add(e.code);
+        this._anyPressed = true;
+        if (e.code === "Space") this._dashAt = performance.now() / 1e3;
+        if (e.code === "KeyM") this._muteReq = true;
+        if (KEYDIR[e.code] || e.code === "Space") e.preventDefault();
+      });
+      addEventListener("keyup", (e) => this._keys.delete(e.code));
+    },
+    // Poll gamepad and recompute derived state. Call once per frame with seconds.
+    update(now) {
+      let kx = 0, ky = 0;
+      for (const code of this._keys) {
+        const d = KEYDIR[code];
+        if (d) {
+          kx += d[0];
+          ky += d[1];
+        }
+      }
+      let gx = 0, gy = 0, padDash = false;
+      this.usingPad = false;
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const gp of pads) {
+        if (!gp) continue;
+        const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+        if (Math.hypot(ax, ay) > 0.22) {
+          gx += ax;
+          gy += ay;
+          this.usingPad = true;
+        }
+        if (gp.buttons[12] && gp.buttons[12].pressed) {
+          gy -= 1;
+          this.usingPad = true;
+        }
+        if (gp.buttons[13] && gp.buttons[13].pressed) {
+          gy += 1;
+          this.usingPad = true;
+        }
+        if (gp.buttons[14] && gp.buttons[14].pressed) {
+          gx -= 1;
+          this.usingPad = true;
+        }
+        if (gp.buttons[15] && gp.buttons[15].pressed) {
+          gx += 1;
+          this.usingPad = true;
+        }
+        if (gp.buttons[0] && gp.buttons[0].pressed) padDash = true;
+        if (gp.buttons[9] && gp.buttons[9].pressed) this._anyPressed = true;
+      }
+      if (this.usingPad && (gx || gy)) {
+        kx = gx;
+        ky = gy;
+      }
+      const m = Math.hypot(kx, ky);
+      this.dir.x = m > 1 ? kx / m : kx;
+      this.dir.y = m > 1 ? ky / m : ky;
+      if (this.usingPad && (gx || gy) || (kx || ky)) this._anyPressed = this._anyPressed;
+      if (padDash) this._dashAt = now;
+      const dt = Math.max(1e-3, now - this._lt);
+      this._lt = now;
+      if (this.active) {
+        const vx = (this.sx - this._lx) / dt, vy = (this.sy - this._ly) / dt;
+        this.velX = this.velX * 0.5 + vx * 0.5;
+        this.velY = this.velY * 0.5 + vy * 0.5;
+        this.speed = Math.hypot(this.velX, this.velY);
+        this._lx = this.sx;
+        this._ly = this.sy;
+        if (this.speed < 420) this._flickArmed = true;
+        if (this._flickArmed && this.speed > DASH.flickSpeed) {
+          this._flickArmed = false;
+          this._dashAt = now;
+        }
+      } else {
+        this.velX *= 0.6;
+        this.velY *= 0.6;
+        this.speed = Math.hypot(this.velX, this.velY);
+        this._flickArmed = true;
+      }
+    },
+    // dash buffered within the queue window?
+    consumeDash(now) {
+      if (now - this._dashAt <= DASH.queue) {
+        this._dashAt = -999;
+        return true;
+      }
+      return false;
+    },
+    flickDir() {
+      const m = Math.hypot(this.velX, this.velY);
+      return m > 1 ? { x: this.velX / m, y: this.velY / m } : { x: 1, y: 0 };
+    },
+    anyJustPressed() {
+      const v = this._anyPressed;
+      this._anyPressed = false;
+      return v;
+    },
+    muteRequested() {
+      const v = this._muteReq;
+      this._muteReq = false;
+      return v;
+    },
+    // consume a fresh tap (screen coords) for UI hit-testing, or null
+    takeTap() {
+      const t = this._tap;
+      this._tap = null;
+      return t;
+    }
+  };
+
+  // js/audio.js
+  var ctx = null;
+  var master = null;
+  var musicBus = null;
+  var sfxBus = null;
+  var seaBus = null;
+  var noiseBuf = null;
+  var muted = false;
+  var melodyTimer = 0;
+  var melodyStep = 0;
+  var seaNodes = null;
+  var padNodes = null;
+  function ensure() {
+    if (ctx) return true;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = muted ? 0 : 0.85;
+      master.connect(ctx.destination);
+      musicBus = ctx.createGain();
+      musicBus.gain.value = 0.28;
+      musicBus.connect(master);
+      sfxBus = ctx.createGain();
+      sfxBus.gain.value = 0.9;
+      sfxBus.connect(master);
+      seaBus = ctx.createGain();
+      seaBus.gain.value = 0;
+      seaBus.connect(master);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      let last2 = 0;
+      for (let i = 0; i < d.length; i++) {
+        const w = Math.random() * 2 - 1;
+        last2 = (last2 + 0.02 * w) / 1.02;
+        d[i] = last2 * 3;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function env(node, t0, a, peak, d) {
+    const g = node.gain;
+    g.cancelScheduledValues(t0);
+    g.setValueAtTime(1e-4, t0);
+    g.exponentialRampToValueAtTime(Math.max(2e-4, peak), t0 + a);
+    g.exponentialRampToValueAtTime(1e-4, t0 + a + d);
+  }
+  function tone(freq, t0, a, peak, d, type = "sine", bus = sfxBus, glideTo = null) {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t0);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0 + a + d);
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(bus);
+    env(g, t0, a, peak, d);
+    o.start(t0);
+    o.stop(t0 + a + d + 0.05);
+  }
+  function noise(t0, dur, peak, filterType, freq, q, bus = sfxBus, sweepTo = null) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = filterType;
+    f.frequency.setValueAtTime(freq, t0);
+    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t0 + dur);
+    if (q != null) f.Q.value = q;
+    const g = ctx.createGain();
+    src.connect(f);
+    f.connect(g);
+    g.connect(bus);
+    env(g, t0, dur * 0.2, peak, dur * 0.8);
+    src.start(t0);
+    src.stop(t0 + dur + 0.05);
+  }
+  var SFX = {
+    pickup() {
+      const t = ctx.currentTime;
+      tone(660, t, 0.01, 0.5, 0.12, "sine");
+      tone(990, t + 0.06, 0.01, 0.4, 0.16, "sine");
+    },
+    dash() {
+      noise(ctx.currentTime, 0.34, 0.5, "bandpass", 280, 0.8, sfxBus, 1700);
+    },
+    hurt() {
+      const t = ctx.currentTime;
+      tone(150, t, 5e-3, 0.7, 0.22, "square", sfxBus, 70);
+      noise(t, 0.22, 0.5, "lowpass", 500, 1, sfxBus);
+    },
+    snare() {
+      const t = ctx.currentTime;
+      tone(220, t, 0.01, 0.45, 0.3, "sawtooth", sfxBus, 160);
+    },
+    escape() {
+      const t = ctx.currentTime;
+      tone(400, t, 5e-3, 0.5, 0.14, "triangle", sfxBus, 900);
+    },
+    ui() {
+      tone(520, ctx.currentTime, 5e-3, 0.3, 0.07, "triangle");
+    },
+    buy() {
+      const t = ctx.currentTime;
+      tone(587, t, 0.01, 0.4, 0.1);
+      tone(880, t + 0.08, 0.01, 0.4, 0.14);
+    },
+    eggs() {
+      const t = ctx.currentTime;
+      const sc = [523, 659, 784, 988, 1175];
+      sc.forEach((f, i) => tone(f, t + i * 0.12, 0.02, 0.45, 0.6, "sine", musicBus));
+    },
+    warn() {
+      tone(330, ctx.currentTime, 0.01, 0.3, 0.18, "sawtooth");
+    }
+  };
+  var SCALE = [392, 440, 523, 587, 659, 784];
+  function tickMelody(dt) {
+    if (!padNodes) return;
+    melodyTimer -= dt;
+    if (melodyTimer <= 0) {
+      melodyTimer = 1.6 + Math.random() * 2.2;
+      melodyStep++;
+      if (Math.random() < 0.82) {
+        const f = SCALE[Math.floor(Math.random() * SCALE.length)] * (Math.random() < 0.3 ? 0.5 : 1);
+        tone(f, ctx.currentTime, 0.02, 0.32, 1.4, "sine", musicBus);
+      }
+    }
+  }
+  var Audio = {
+    unlock() {
+      if (ensure() && ctx.state === "suspended") ctx.resume();
+    },
+    isMuted() {
+      return muted;
+    },
+    setMuted(m) {
+      muted = m;
+      if (master) master.gain.value = muted ? 0 : 0.85;
+    },
+    toggleMute() {
+      this.setMuted(!muted);
+      return muted;
+    },
+    sfx(name) {
+      if (!ensure() || muted) return;
+      try {
+        SFX[name] && SFX[name]();
+      } catch (e) {
+      }
+    },
+    music(on) {
+      if (!ensure()) return;
+      if (on && !padNodes) {
+        const t = ctx.currentTime;
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 900;
+        lp.connect(musicBus);
+        const freqs = [130.8, 196, 261.6];
+        const oscs = [];
+        for (const fr of freqs) {
+          const o = ctx.createOscillator();
+          o.type = "triangle";
+          o.frequency.value = fr;
+          const g = ctx.createGain();
+          g.gain.value = 0.12;
+          o.connect(g);
+          g.connect(lp);
+          o.start(t);
+          oscs.push(o);
+        }
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 0.07;
+        const lg = ctx.createGain();
+        lg.gain.value = 300;
+        lfo.connect(lg);
+        lg.connect(lp.frequency);
+        lfo.start(t);
+        padNodes = { oscs, lfo, lp };
+      } else if (!on && padNodes) {
+        try {
+          padNodes.oscs.forEach((o) => o.stop());
+          padNodes.lfo.stop();
+        } catch (e) {
+        }
+        padNodes = null;
+      }
+    },
+    sea(on) {
+      if (!ensure()) return;
+      const tgt = on ? 0.5 : 0;
+      seaBus.gain.cancelScheduledValues(ctx.currentTime);
+      seaBus.gain.linearRampToValueAtTime(tgt, ctx.currentTime + 0.8);
+      if (on && !seaNodes) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 420;
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 0.12;
+        const lg = ctx.createGain();
+        lg.gain.value = 160;
+        lfo.connect(lg);
+        lg.connect(lp.frequency);
+        src.connect(lp);
+        lp.connect(seaBus);
+        src.start();
+        lfo.start();
+        seaNodes = { src, lfo };
+      }
+    },
+    update(dt) {
+      if (ctx && !muted) tickMelody(dt);
+    }
+  };
+
+  // js/utils.js
+  var TAU = Math.PI * 2;
+  var clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  var lerp = (a, b, t) => a + (b - a) * t;
+  var dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+  function makeRng(seed) {
+    let s = seed >>> 0;
+    const fn = () => {
+      s |= 0;
+      s = s + 1831565813 | 0;
+      let t = Math.imul(s ^ s >>> 15, 1 | s);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+    fn.range = (a, b) => a + fn() * (b - a);
+    fn.int = (a, b) => Math.floor(a + fn() * (b - a + 1));
+    fn.pick = (arr) => arr[Math.floor(fn() * arr.length)];
+    fn.chance = (p) => fn() < p;
+    return fn;
+  }
+  function hash1(n) {
+    n = n << 13 ^ n;
+    n = n * (n * n * 15731 + 789221) + 1376312589 & 2147483647;
+    return n / 2147483647;
+  }
+  function rgb(hex) {
+    const h = hex.replace("#", "");
+    const n = parseInt(h, 16);
+    return `${n >> 16 & 255},${n >> 8 & 255},${n & 255}`;
+  }
+  function rgba(hex, a) {
+    return `rgba(${rgb(hex)},${a})`;
+  }
+  function mixHex(h1, h2, t) {
+    const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16);
+    const r = Math.round(lerp(a >> 16 & 255, b >> 16 & 255, t));
+    const g = Math.round(lerp(a >> 8 & 255, b >> 8 & 255, t));
+    const bl = Math.round(lerp(a & 255, b & 255, t));
+    return `rgb(${r},${g},${bl})`;
+  }
+
+  // js/draw.js
+  var _boil = 0;
+  function jit(seed) {
+    return hash1(seed * 131 + _boil * 977 | 0) * 2 - 1;
+  }
+  function buildSpline(ctx3, p, closed) {
+    const n = p.length;
+    if (n < 3) {
+      ctx3.moveTo(p[0].x, p[0].y);
+      for (let i = 1; i < n; i++) ctx3.lineTo(p[i].x, p[i].y);
+      return;
+    }
+    const at = (i) => p[(i % n + n) % n];
+    ctx3.moveTo(p[0].x, p[0].y);
+    const end = closed ? n : n - 1;
+    for (let i = 0; i < end; i++) {
+      const p0 = closed ? at(i - 1) : at(Math.max(0, i - 1));
+      const p1 = at(i);
+      const p2 = at(i + 1);
+      const p3 = closed ? at(i + 2) : at(Math.min(n - 1, i + 2));
+      ctx3.bezierCurveTo(
+        p1.x + (p2.x - p0.x) / 6,
+        p1.y + (p2.y - p0.y) / 6,
+        p2.x - (p3.x - p1.x) / 6,
+        p2.y - (p3.y - p1.y) / 6,
+        p2.x,
+        p2.y
+      );
+    }
+    if (closed) ctx3.closePath();
+  }
+  function sketchShape(ctx3, pts, o = {}) {
+    const {
+      fill = null,
+      outline = PALETTE.ink,
+      lineW = 3,
+      wobble = 2,
+      closed = true,
+      key = 1,
+      alpha = 1
+    } = o;
+    const w1 = pts.map((p, i) => ({
+      x: p.x + jit(key + i * 2) * wobble,
+      y: p.y + jit(key + i * 2 + 1) * wobble
+    }));
+    ctx3.beginPath();
+    buildSpline(ctx3, w1, closed);
+    if (fill) {
+      ctx3.globalAlpha = alpha;
+      ctx3.fillStyle = fill;
+      ctx3.fill();
+      ctx3.globalAlpha = 1;
+    }
+    if (outline) {
+      ctx3.lineJoin = "round";
+      ctx3.lineCap = "round";
+      ctx3.strokeStyle = outline;
+      ctx3.lineWidth = lineW;
+      ctx3.stroke();
+      const w2 = pts.map((p, i) => ({
+        x: p.x + jit(key + i * 2 + 53) * wobble * 1.4,
+        y: p.y + jit(key + i * 2 + 54) * wobble * 1.4
+      }));
+      ctx3.beginPath();
+      buildSpline(ctx3, w2, closed);
+      ctx3.globalAlpha = 0.3;
+      ctx3.lineWidth = lineW * 0.7;
+      ctx3.stroke();
+      ctx3.globalAlpha = 1;
+    }
+  }
+  function blobPts(cx, cy, rx, ry, n, lump, key) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU;
+      const r = 1 + (lump ? (hash1(key + i * 7) * 2 - 1) * lump : 0);
+      pts.push({ x: cx + Math.cos(a) * rx * r, y: cy + Math.sin(a) * ry * r });
+    }
+    return pts;
+  }
+  function wash(ctx3, x, y, r, color, a = 0.5) {
+    const g = ctx3.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, rgba(color, a));
+    g.addColorStop(0.65, rgba(color, a * 0.45));
+    g.addColorStop(1, rgba(color, 0));
+    ctx3.fillStyle = g;
+    ctx3.beginPath();
+    ctx3.arc(x, y, r, 0, TAU);
+    ctx3.fill();
+  }
+  function makePaper(size = 220) {
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const g = c.getContext("2d");
+    const img = g.createImageData(size, size);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const n = (hash1(i * 2.17 + 11) - 0.5) * 26;
+      const f = (hash1(i * 0.013 + 7) - 0.5) * 10;
+      const v = 128 + n + f;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return g.createPattern(c, "repeat");
+  }
+  function godrays(ctx3, w, h, t, count = 6) {
+    ctx3.save();
+    ctx3.globalCompositeOperation = "lighter";
+    for (let i = 0; i < count; i++) {
+      const seed = i * 1.7;
+      const x = (i + 0.5) / count * w + Math.sin(t * 0.18 + seed) * w * 0.06;
+      const sway = Math.sin(t * 0.11 + seed * 2) * 40;
+      const topW = lerp(26, 64, hash1(i * 13));
+      const a = 0.05 + 0.035 * (0.5 + 0.5 * Math.sin(t * 0.3 + seed));
+      const g = ctx3.createLinearGradient(x, 0, x + sway, h);
+      g.addColorStop(0, rgba("#bfeefc", a));
+      g.addColorStop(0.6, rgba("#bfeefc", a * 0.25));
+      g.addColorStop(1, rgba("#bfeefc", 0));
+      ctx3.fillStyle = g;
+      ctx3.beginPath();
+      ctx3.moveTo(x - topW, 0);
+      ctx3.lineTo(x + topW, 0);
+      ctx3.lineTo(x + sway + topW * 2.4, h);
+      ctx3.lineTo(x + sway - topW * 2.4, h);
+      ctx3.closePath();
+      ctx3.fill();
+    }
+    ctx3.restore();
+  }
+
+  // js/background.js
+  var Background = class {
+    constructor() {
+      this.paper = null;
+      this.t = 0;
+    }
+    ensurePaper() {
+      if (!this.paper) this.paper = makePaper(220);
+    }
+    render(ctx3, view2, t, tint) {
+      this.ensurePaper();
+      const { w, h, scale, camX } = view2;
+      const sy = (wy) => wy * scale;
+      const g = ctx3.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, mixHex(tint, PALETTE.surfaceTeal, 0.35));
+      g.addColorStop(0.45, tint);
+      g.addColorStop(1, PALETTE.deepNavy);
+      ctx3.fillStyle = g;
+      ctx3.fillRect(0, 0, w, h);
+      const par1 = -camX * 0.18;
+      for (let i = 0; i < 6; i++) {
+        const bx = (i * 421.7 + par1) % (w + 600) - 300;
+        const by = h * (0.2 + hash1(i * 7) * 0.6);
+        wash(
+          ctx3,
+          bx < -300 ? bx + w + 600 : bx,
+          by,
+          220 + hash1(i) * 160,
+          i % 2 ? mixHex(tint, "#000", 0.25) : mixHex(tint, PALETTE.surfaceTeal, 0.5),
+          0.22
+        );
+      }
+      const par2 = -camX * 0.4;
+      const floorY = sy(REF_H - WATER.seabedBand);
+      ctx3.fillStyle = rgba(mixHex(tint, "#000", 0.4), 0.5);
+      for (let i = 0; i < 14; i++) {
+        let bx = (i * 197 + par2) % (w + 400) - 200;
+        if (bx < -200) bx += w + 400;
+        const kh = (80 + hash1(i * 3) * 150) * scale;
+        const sway = Math.sin(t * 0.5 + i) * 16;
+        ctx3.beginPath();
+        ctx3.moveTo(bx - 10, floorY);
+        ctx3.quadraticCurveTo(bx + sway, floorY - kh * 0.6, bx + sway * 1.4, floorY - kh);
+        ctx3.quadraticCurveTo(bx + sway, floorY - kh * 0.6, bx + 10, floorY);
+        ctx3.closePath();
+        ctx3.fill();
+      }
+      godrays(ctx3, w, h, t, 6);
+      const surfH = sy(WATER.surfaceBand);
+      const sg = ctx3.createLinearGradient(0, 0, 0, surfH * 1.4);
+      sg.addColorStop(0, rgba("#bfe9f0", 0.85));
+      sg.addColorStop(1, rgba("#bfe9f0", 0));
+      ctx3.fillStyle = sg;
+      ctx3.fillRect(0, 0, w, surfH * 1.4);
+      ctx3.strokeStyle = rgba(PALETTE.foam, 0.7);
+      ctx3.lineWidth = 2 * scale;
+      ctx3.beginPath();
+      for (let x = 0; x <= w; x += 12) {
+        const yy = surfH + Math.sin((x + camX) * 0.02 + t * 1.6) * 4 * scale + Math.sin((x + camX) * 5e-3 - t) * 3 * scale;
+        if (x === 0) ctx3.moveTo(x, yy);
+        else ctx3.lineTo(x, yy);
+      }
+      ctx3.stroke();
+      for (let i = 0; i < 18; i++) {
+        const fx = (i * 137.5 - camX * 0.8) % w;
+        const x = fx < 0 ? fx + w : fx;
+        ctx3.fillStyle = rgba(PALETTE.foam, 0.5 + 0.3 * Math.sin(t * 2 + i));
+        ctx3.beginPath();
+        ctx3.arc(x, surfH * (0.3 + hash1(i) * 0.6), 1.5 * scale, 0, TAU);
+        ctx3.fill();
+      }
+      const sandTop = floorY;
+      const sand = ctx3.createLinearGradient(0, sandTop, 0, h);
+      sand.addColorStop(0, "#c9b386");
+      sand.addColorStop(1, "#8f7a52");
+      ctx3.fillStyle = sand;
+      ctx3.beginPath();
+      ctx3.moveTo(0, h);
+      ctx3.lineTo(0, sandTop + Math.sin(camX * 0.02 + t) * 4);
+      for (let x = 0; x <= w; x += 18) {
+        const yy = sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * scale + Math.sin((x + camX) * 0.06) * 3 * scale;
+        ctx3.lineTo(x, yy);
+      }
+      ctx3.lineTo(w, h);
+      ctx3.closePath();
+      ctx3.fill();
+      for (let i = 0; i < 26; i++) {
+        let px = (i * 173.3 - camX) % (w + 60);
+        if (px < 0) px += w + 60;
+        const py = sandTop + (10 + hash1(i * 5) * (h - sandTop) * 0.7) * 0.6 + 6;
+        ctx3.fillStyle = rgba(i % 2 ? "#7d6b45" : "#b7a073", 0.7);
+        ctx3.beginPath();
+        ctx3.arc(px, clamp(py, sandTop + 6, h - 4), (2 + hash1(i) * 4) * scale, 0, TAU);
+        ctx3.fill();
+      }
+      ctx3.strokeStyle = rgba("#6b5836", 0.5);
+      ctx3.lineWidth = 2 * scale;
+      ctx3.beginPath();
+      for (let x = 0; x <= w; x += 18) {
+        const yy = sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * scale + Math.sin((x + camX) * 0.06) * 3 * scale;
+        if (x === 0) ctx3.moveTo(x, yy);
+        else ctx3.lineTo(x, yy);
+      }
+      ctx3.stroke();
+      ctx3.save();
+      ctx3.globalAlpha = 0.05;
+      ctx3.globalCompositeOperation = "overlay";
+      ctx3.fillStyle = this.paper;
+      ctx3.fillRect(0, 0, w, h);
+      ctx3.restore();
+      const vg = ctx3.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 0.85);
+      vg.addColorStop(0, "rgba(0,0,0,0)");
+      vg.addColorStop(1, "rgba(3,12,22,0.4)");
+      ctx3.fillStyle = vg;
+      ctx3.fillRect(0, 0, w, h);
+    }
+    // current-band visual (drifting streaks); called in WORLD space.
+    drawCurrent(ctx3, c, t) {
+      ctx3.save();
+      ctx3.strokeStyle = rgba("#bfe9f0", 0.12);
+      ctx3.lineWidth = 2;
+      const dir = Math.sign(c.fx) || 1;
+      for (let i = 0; i < 10; i++) {
+        const yy = lerp(c.y0, c.y1, (i + 0.5) / 10);
+        const phase = (t * dir * 0.4 + i * 0.3) % 1;
+        const sx = lerp(c.x0, c.x1, phase);
+        ctx3.beginPath();
+        ctx3.moveTo(sx, yy);
+        ctx3.lineTo(sx + dir * 40, yy);
+        ctx3.stroke();
+      }
+      ctx3.restore();
+    }
+  };
+
+  // js/sprites.js
+  function drawSunfish(ctx3, R, t, st = {}) {
+    const flap = st.flap ?? 0;
+    const blink = st.blink ?? 1;
+    const hurt = st.hurt ?? 0;
+    const look = st.lookX ?? 1;
+    const mouth = st.mouth ?? 0;
+    const sx = Math.sin(flap) * 0.22 * R;
+    const px = Math.sin(flap * 1.25) * 0.18;
+    const finFill = mixHex(PALETTE.fishShade, PALETTE.fishBody, 0.4);
+    const dorsal = [
+      { x: -0.34 * R, y: -0.84 * R },
+      { x: -0.08 * R + sx * 0.4, y: -1.46 * R },
+      { x: 0.04 * R + sx, y: -1.98 * R },
+      { x: 0.18 * R + sx * 0.6, y: -1.38 * R },
+      { x: 0.12 * R, y: -0.82 * R }
+    ];
+    const anal = dorsal.map((p) => ({ x: p.x, y: -p.y }));
+    sketchShape(ctx3, dorsal, { fill: finFill, lineW: 2.4, wobble: 2.6, key: 11 });
+    sketchShape(ctx3, anal, { fill: finFill, lineW: 2.4, wobble: 2.6, key: 17 });
+    const body = [
+      { x: 1.02, y: -0.1 },
+      { x: 0.8, y: -0.7 },
+      { x: 0.2, y: -1.05 },
+      { x: -0.44, y: -0.95 },
+      { x: -0.92, y: -0.64 },
+      { x: -1.05, y: -0.28 },
+      { x: -1.02, y: 0.08 },
+      { x: -1.06, y: 0.42 },
+      { x: -0.9, y: 0.72 },
+      { x: -0.4, y: 0.98 },
+      { x: 0.24, y: 1.04 },
+      { x: 0.82, y: 0.64 },
+      { x: 1.02, y: 0.18 }
+    ].map((p) => ({ x: p.x * R, y: p.y * R }));
+    const grad = ctx3.createLinearGradient(0, -1.1 * R, 0, 1.1 * R);
+    grad.addColorStop(0, PALETTE.fishShade);
+    grad.addColorStop(0.5, PALETTE.fishBody);
+    grad.addColorStop(1, PALETTE.fishBelly);
+    sketchShape(ctx3, body, { fill: grad, lineW: 3.4, wobble: 1.9, key: 3 });
+    ctx3.save();
+    ctx3.beginPath();
+    sketchShape(ctx3, body, { fill: null, outline: null });
+    ctx3.clip();
+    wash(ctx3, -0.2 * R, -0.7 * R, R, PALETTE.fishShade, 0.5);
+    wash(ctx3, 0.1 * R, 0.8 * R, 0.9 * R, PALETTE.fishBelly, 0.6);
+    for (let i = 0; i < 5; i++) {
+      const a = hash1(i * 5 + 1) * TAU, rr = hash1(i * 3 + 2) * 0.6 * R;
+      wash(ctx3, Math.cos(a) * rr, Math.sin(a) * rr - 0.2 * R, 0.16 * R, PALETTE.fishShade, 0.4);
+    }
+    if (hurt > 0) wash(ctx3, 0, 0, 1.2 * R, "#e2604f", 0.55 * hurt);
+    ctx3.restore();
+    ctx3.strokeStyle = rgba(PALETTE.ink, 0.45);
+    ctx3.lineWidth = 1.6;
+    for (let i = -2; i <= 2; i++) {
+      ctx3.beginPath();
+      ctx3.moveTo(-1 * R, i * 0.28 * R);
+      ctx3.lineTo(-0.78 * R, i * 0.28 * R + 0.04 * R);
+      ctx3.stroke();
+    }
+    ctx3.save();
+    ctx3.translate(0.3 * R, 0.18 * R);
+    ctx3.rotate(px);
+    sketchShape(
+      ctx3,
+      blobPts(0, 0, 0.26 * R, 0.13 * R, 9, 0.12, 71),
+      { fill: finFill, lineW: 2, wobble: 1.6, key: 23 }
+    );
+    ctx3.restore();
+    const ex = 0.52 * R, ey = -0.3 * R, er = 0.21 * R;
+    sketchShape(
+      ctx3,
+      blobPts(ex, ey, er, er, 10, 0.05, 31),
+      { fill: PALETTE.foam, lineW: 2.2, wobble: 1.2, key: 31 }
+    );
+    ctx3.save();
+    ctx3.beginPath();
+    ctx3.ellipse(ex, ey, er, er * blink, 0, 0, TAU);
+    ctx3.clip();
+    ctx3.fillStyle = PALETTE.ink;
+    ctx3.beginPath();
+    ctx3.arc(ex + look * 0.07 * R, ey + 0.03 * R, er * 0.62, 0, TAU);
+    ctx3.fill();
+    ctx3.fillStyle = PALETTE.foam;
+    ctx3.beginPath();
+    ctx3.arc(ex + look * 0.07 * R - er * 0.2, ey - er * 0.22, er * 0.2, 0, TAU);
+    ctx3.fill();
+    ctx3.restore();
+    ctx3.strokeStyle = PALETTE.ink;
+    ctx3.lineWidth = 2.6;
+    ctx3.lineCap = "round";
+    ctx3.beginPath();
+    ctx3.ellipse(
+      ex,
+      ey - er * (1 - blink) * 0.2,
+      er * 1.08,
+      er * (0.5 + 0.5 * blink),
+      0,
+      Math.PI * 1.04,
+      Math.PI * 2.02
+    );
+    ctx3.stroke();
+    ctx3.strokeStyle = PALETTE.ink;
+    ctx3.lineWidth = 2.2;
+    if (mouth > 0.1) {
+      ctx3.beginPath();
+      ctx3.arc(1 * R, 0.18 * R, 0.07 * R * (0.6 + mouth), 0, TAU);
+      ctx3.stroke();
+    } else {
+      ctx3.beginPath();
+      ctx3.moveTo(0.96 * R, 0.14 * R);
+      ctx3.quadraticCurveTo(1.02 * R, 0.22 * R, 0.97 * R, 0.27 * R);
+      ctx3.stroke();
+    }
+  }
+  function drawSeal(ctx3, R, t, st = {}) {
+    const mouth = st.mouth ?? 0;
+    const swim = Math.sin(t * 6) * 0.06;
+    const bodyFill = ctx3.createLinearGradient(0, -R, 0, R);
+    bodyFill.addColorStop(0, PALETTE.hazardLight);
+    bodyFill.addColorStop(0.6, PALETTE.hazard);
+    bodyFill.addColorStop(1, mixHex(PALETTE.hazard, "#cdbfae", 0.5));
+    sketchShape(ctx3, [
+      { x: -1.15 * R, y: -0.5 * R },
+      { x: -1.45 * R, y: -0.2 * R },
+      { x: -1.3 * R, y: 0 },
+      { x: -1.46 * R, y: 0.24 * R },
+      { x: -1.12 * R, y: 0.5 * R },
+      { x: -0.9 * R, y: 0 }
+    ], { fill: PALETTE.hazardDark, lineW: 2.4, wobble: 2.2, key: 41 });
+    const body = [
+      { x: 1.12, y: 0.02 },
+      { x: 0.86, y: -0.42 },
+      { x: 0.3, y: -0.6 },
+      { x: -0.4, y: -0.56 },
+      { x: -1, y: -0.34 },
+      { x: -1.05, y: 0.06 + swim },
+      { x: -0.95, y: 0.4 },
+      { x: -0.3, y: 0.58 },
+      { x: 0.4, y: 0.56 },
+      { x: 0.92, y: 0.4 }
+    ].map((p) => ({ x: p.x * R, y: p.y * R }));
+    sketchShape(ctx3, body, { fill: bodyFill, lineW: 3, wobble: 1.9, key: 43 });
+    ctx3.save();
+    ctx3.translate(0.2 * R, 0.42 * R);
+    ctx3.rotate(0.5 + swim);
+    sketchShape(
+      ctx3,
+      [
+        { x: 0, y: 0 },
+        { x: 0.16 * R, y: 0.5 * R },
+        { x: 0.02 * R, y: 0.66 * R },
+        { x: -0.16 * R, y: 0.4 * R }
+      ],
+      { fill: PALETTE.hazardDark, lineW: 2.2, wobble: 1.8, key: 47 }
+    );
+    ctx3.restore();
+    if (mouth > 0.05) {
+      ctx3.fillStyle = "#6b2030";
+      ctx3.beginPath();
+      ctx3.moveTo(0.9 * R, -0.02 * R);
+      ctx3.lineTo(1.2 * R, -0.18 * R - mouth * 0.18 * R);
+      ctx3.lineTo(1.24 * R, 0.06 * R);
+      ctx3.lineTo(1.18 * R, 0.2 * R + mouth * 0.18 * R);
+      ctx3.closePath();
+      ctx3.fill();
+      ctx3.fillStyle = PALETTE.foam;
+      for (let i = 0; i < 3; i++) {
+        ctx3.beginPath();
+        ctx3.moveTo((1 + i * 0.07) * R, -0.1 * R - mouth * 0.16 * R);
+        ctx3.lineTo((1.04 + i * 0.07) * R, 0 * R);
+        ctx3.lineTo((1.08 + i * 0.07) * R, -0.1 * R - mouth * 0.16 * R);
+        ctx3.fill();
+      }
+    }
+    ctx3.fillStyle = PALETTE.ink;
+    ctx3.beginPath();
+    ctx3.arc(0.62 * R, -0.22 * R, 0.09 * R, 0, TAU);
+    ctx3.fill();
+    ctx3.fillStyle = PALETTE.foam;
+    ctx3.beginPath();
+    ctx3.arc(0.6 * R, -0.25 * R, 0.03 * R, 0, TAU);
+    ctx3.fill();
+    ctx3.strokeStyle = rgba(PALETTE.foam, 0.8);
+    ctx3.lineWidth = 1.3;
+    for (let i = -1; i <= 1; i++) {
+      ctx3.beginPath();
+      ctx3.moveTo(0.95 * R, 0.12 * R);
+      ctx3.quadraticCurveTo(1.3 * R, 0.12 * R + i * 0.1 * R, 1.5 * R, 0.14 * R + i * 0.16 * R);
+      ctx3.stroke();
+    }
+  }
+  function drawBoat(ctx3, W, t) {
+    const H = W * 0.42;
+    const hullFill = ctx3.createLinearGradient(0, -H, 0, H);
+    hullFill.addColorStop(0, PALETTE.hazardLight);
+    hullFill.addColorStop(1, PALETTE.hazardDark);
+    const hull = [
+      { x: -1, y: -0.5 },
+      { x: 1, y: -0.5 },
+      { x: 0.92, y: 0.1 },
+      { x: 0.5, y: 0.62 },
+      { x: 0, y: 0.78 },
+      { x: -0.5, y: 0.6 },
+      { x: -0.92, y: 0.12 }
+    ].map((p) => ({ x: p.x * W, y: p.y * H }));
+    sketchShape(ctx3, hull, { fill: hullFill, lineW: 3.4, wobble: 2.2, key: 51 });
+    ctx3.save();
+    ctx3.beginPath();
+    sketchShape(ctx3, hull, { fill: null, outline: null });
+    ctx3.clip();
+    ctx3.fillStyle = rgba("#b6483a", 0.85);
+    ctx3.fillRect(-W, -0.18 * H, 2 * W, 0.16 * H);
+    ctx3.strokeStyle = rgba(PALETTE.hazardDark, 0.5);
+    ctx3.lineWidth = 1.4;
+    for (let i = 0; i < 3; i++) {
+      ctx3.beginPath();
+      ctx3.moveTo(-0.9 * W, (0.1 + i * 0.18) * H);
+      ctx3.lineTo(0.9 * W, (0.1 + i * 0.18) * H);
+      ctx3.stroke();
+    }
+    ctx3.restore();
+    sketchShape(ctx3, [
+      { x: -0.3 * W, y: -0.5 * H },
+      { x: -0.3 * W, y: -0.95 * H },
+      { x: 0.18 * W, y: -0.95 * H },
+      { x: 0.18 * W, y: -0.5 * H }
+    ], { fill: mixHex(PALETTE.hazard, "#caa", 0.3), lineW: 2.6, wobble: 1.8, key: 53 });
+    ctx3.save();
+    ctx3.translate(-0.96 * W, 0.18 * H);
+    ctx3.fillStyle = "#8a939a";
+    ctx3.strokeStyle = PALETTE.ink;
+    ctx3.lineWidth = 2;
+    const spin = t * 16;
+    for (let b = 0; b < 3; b++) {
+      ctx3.save();
+      ctx3.rotate(spin + b / 3 * TAU);
+      ctx3.beginPath();
+      ctx3.ellipse(0, -0.16 * H, 0.07 * W, 0.2 * H, 0, 0, TAU);
+      ctx3.fill();
+      ctx3.stroke();
+      ctx3.restore();
+    }
+    ctx3.beginPath();
+    ctx3.arc(0, 0, 0.06 * W, 0, TAU);
+    ctx3.fillStyle = "#5b636a";
+    ctx3.fill();
+    ctx3.stroke();
+    ctx3.restore();
+  }
+  function drawNet(ctx3, w, d, t, taut = 0) {
+    const cols = 7, rows = Math.max(5, Math.round(d / (w / cols)));
+    const sway = (y) => Math.sin(t * 1.4 + y * 0.02) * (1 - taut) * 10;
+    ctx3.strokeStyle = rgba("#dfeef0", 0.55);
+    ctx3.lineWidth = 1.4;
+    ctx3.beginPath();
+    for (let c = 0; c <= cols; c++) {
+      const x = (c / cols - 0.5) * w;
+      for (let r = 0; r <= rows; r++) {
+        const y = r / rows * d;
+        const xx = x + sway(y) * (x === 0 ? 0 : x / Math.abs(x) * 0.3 + 0.7);
+        if (r === 0) ctx3.moveTo(xx, y);
+        else ctx3.lineTo(xx, y);
+      }
+    }
+    for (let r = 0; r <= rows; r++) {
+      const y = r / rows * d;
+      for (let c = 0; c <= cols; c++) {
+        const x = (c / cols - 0.5) * w + sway(y) * 0.6;
+        if (c === 0) ctx3.moveTo(x, y);
+        else ctx3.lineTo(x, y);
+      }
+    }
+    ctx3.stroke();
+    ctx3.fillStyle = rgba("#caa", 0.8);
+    for (let c = 0; c <= cols; c++) {
+      ctx3.beginPath();
+      ctx3.arc((c / cols - 0.5) * w, 0, 3, 0, TAU);
+      ctx3.fill();
+    }
+  }
+  function drawRock(ctx3, R, seed) {
+    const n = 2 + Math.floor(hash1(seed) * 3);
+    for (let i = 0; i < n; i++) {
+      const ox = (hash1(seed + i * 9) - 0.5) * R * 1.1;
+      const oy = (1 - hash1(seed + i * 5) * 0.5) * R * 0.4;
+      const rr = R * (0.5 + hash1(seed + i * 7) * 0.5);
+      const fill = ctx3.createLinearGradient(ox, oy - rr, ox, oy + rr);
+      fill.addColorStop(0, PALETTE.hazardLight);
+      fill.addColorStop(1, PALETTE.hazardDark);
+      sketchShape(
+        ctx3,
+        blobPts(ox, oy, rr, rr * 0.82, 9, 0.32, seed + i * 31),
+        { fill, lineW: 3, wobble: 2.2, key: seed + i * 13 }
+      );
+      for (let b = 0; b < 4; b++) {
+        const a = hash1(seed + i + b * 3) * TAU, br = rr * 0.6 * hash1(seed + b);
+        ctx3.fillStyle = rgba(b % 2 ? "#6f8a5a" : PALETTE.hazardDark, 0.6);
+        ctx3.beginPath();
+        ctx3.arc(ox + Math.cos(a) * br, oy + Math.sin(a) * br * 0.7, rr * 0.08, 0, TAU);
+        ctx3.fill();
+      }
+    }
+  }
+  function drawKelp(ctx3, H, t, seed) {
+    const segs = 7;
+    const sway = 0.5 + hash1(seed) * 0.5;
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const f = i / segs;
+      const x = Math.sin(t * sway + f * 3 + seed) * f * 0.22 * H;
+      pts.push({ x, y: -f * H });
+    }
+    ctx3.strokeStyle = mixHex("#3f6f47", PALETTE.ink, 0.4);
+    ctx3.lineWidth = 6;
+    ctx3.lineCap = "round";
+    ctx3.lineJoin = "round";
+    ctx3.beginPath();
+    ctx3.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) ctx3.lineTo(p.x, p.y);
+    ctx3.stroke();
+    ctx3.fillStyle = rgba("#4f8255", 0.92);
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i], side = i % 2 ? 1 : -1;
+      ctx3.save();
+      ctx3.translate(p.x, p.y);
+      sketchShape(
+        ctx3,
+        blobPts(side * 0.12 * H, 0, 0.18 * H, 0.05 * H, 7, 0.1, seed + i),
+        { fill: rgba("#4f8255", 0.92), lineW: 1.6, wobble: 1.5, key: seed + i * 3 }
+      );
+      ctx3.restore();
+    }
+  }
+  function drawJelly(ctx3, R, t) {
+    const pulse = 1 + Math.sin(t * 2.2) * 0.12;
+    const bell = [
+      { x: -1, y: 0.1 },
+      { x: -0.86, y: -0.5 },
+      { x: -0.4, y: -0.86 },
+      { x: 0, y: -0.96 },
+      { x: 0.4, y: -0.86 },
+      { x: 0.86, y: -0.5 },
+      { x: 1, y: 0.1 },
+      { x: 0.6, y: 0.2 },
+      { x: 0.3, y: 0.06 },
+      { x: 0, y: 0.2 },
+      { x: -0.3, y: 0.06 },
+      { x: -0.6, y: 0.2 }
+    ].map((p) => ({ x: p.x * R, y: p.y * R * pulse }));
+    wash(ctx3, 0, -0.2 * R, 1.5 * R, "#cfe9ef", 0.4);
+    ctx3.save();
+    sketchShape(ctx3, bell, { fill: rgba("#dff1f4", 0.5), lineW: 2.2, wobble: 2, key: 61 });
+    wash(ctx3, 0, -0.4 * R, 0.5 * R, "#b9a6d6", 0.5);
+    ctx3.restore();
+    ctx3.strokeStyle = rgba("#cfd6e6", 0.7);
+    ctx3.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const bx = (i / 5 - 0.5) * 1.6 * R;
+      ctx3.beginPath();
+      ctx3.moveTo(bx, 0.1 * R);
+      for (let s = 1; s <= 5; s++) {
+        const yy = 0.1 * R + s * 0.4 * R;
+        ctx3.lineTo(bx + Math.sin(t * 3 + s + i) * 0.12 * R, yy);
+      }
+      ctx3.stroke();
+    }
+  }
+  function drawPlankton(ctx3, R, t) {
+    wash(ctx3, 0, 0, R * 1.7, PALETTE.amber, 0.5 + 0.15 * Math.sin(t * 4));
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * TAU + t * 0.6;
+      const rr = R * (0.35 + 0.4 * hash1(i + 3));
+      const x = Math.cos(a) * rr, y = Math.sin(a * 1.3) * rr;
+      ctx3.fillStyle = i % 2 ? PALETTE.amberSoft : "#aef0c0";
+      ctx3.beginPath();
+      ctx3.arc(x, y, R * 0.16, 0, TAU);
+      ctx3.fill();
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.9);
+      ctx3.beginPath();
+      ctx3.arc(x - R * 0.05, y - R * 0.05, R * 0.05, 0, TAU);
+      ctx3.fill();
+    }
+  }
+  function drawEgg(ctx3, r, t = 0) {
+    wash(ctx3, 0, 0, r * 2, PALETTE.amber, 0.6);
+    ctx3.fillStyle = rgba("#fff6e0", 0.85);
+    ctx3.beginPath();
+    ctx3.arc(0, 0, r, 0, TAU);
+    ctx3.fill();
+    ctx3.fillStyle = rgba(PALETTE.amber, 0.9);
+    ctx3.beginPath();
+    ctx3.arc(0, 0, r * 0.45, 0, TAU);
+    ctx3.fill();
+    ctx3.fillStyle = rgba(PALETTE.foam, 0.95);
+    ctx3.beginPath();
+    ctx3.arc(-r * 0.3, -r * 0.3, r * 0.18, 0, TAU);
+    ctx3.fill();
+  }
+
+  // js/entities.js
+  var surfaceLimit = (r) => WATER.surfaceBand + r * 0.4;
+  var seabedLimit = (r) => REF_H - WATER.seabedBand - r * 0.4;
+  var Player = class {
+    constructor(stats) {
+      this.x = 120;
+      this.y = REF_H * 0.5;
+      this.vx = 0;
+      this.vy = 0;
+      this.r = FISH.radius;
+      this.applyStats(stats);
+      this.hp = this.maxHp;
+      this.face = 1;
+      this.pitch = 0;
+      this.flap = 0;
+      this.blink = 1;
+      this._blinkT = 2;
+      this.dashT = 0;
+      this.dashCD = 0;
+      this.invuln = 0;
+      this.hurt = 0;
+      this.mouth = 0;
+      this.caught = null;
+      this.haul = 0;
+      this.escape = 0;
+      this.alive = true;
+    }
+    applyStats(s) {
+      this.stats = s;
+      this.maxHp = s.maxHp;
+      this.speed = FISH.maxSpeed * s.speedMul;
+      this.freq = FISH.followFreq * s.freqMul;
+    }
+    get hitR() {
+      return this.r * FISH.hitboxScale;
+    }
+    tryDash(dir, audio, particles) {
+      if (this.stats.dashLevel <= 0 || this.dashCD > 0 || this.caught) return;
+      this.dashT = DASH.dur;
+      this.dashCD = DASH.cooldown * (1 - (this.stats.dashLevel - 1) * 0.18);
+      this.invuln = Math.max(this.invuln, DASH.iframes + (this.stats.dashLevel - 1) * 0.06);
+      const imp = DASH.impulse * (0.85 + this.stats.dashLevel * 0.15);
+      this.vx += dir.x * imp;
+      this.vy += dir.y * imp;
+      audio.sfx("dash");
+      for (let i = 0; i < 10; i++) {
+        particles.spawn(
+          this.x - dir.x * this.r,
+          this.y - dir.y * this.r,
+          "bubble",
+          -dir.x * 60 + (Math.random() - 0.5) * 60,
+          -dir.y * 60 + (Math.random() - 0.5) * 60
+        );
+      }
+    }
+    hit(dmg, kx, ky, audio, particles) {
+      if (this.invuln > 0 || !this.alive) return false;
+      this.hp -= dmg;
+      this.invuln = 1.1;
+      this.hurt = 1;
+      this.vx += kx;
+      this.vy += ky;
+      audio.sfx("hurt");
+      for (let i = 0; i < 12; i++)
+        particles.spawn(this.x, this.y, "inkpuff", (Math.random() - 0.5) * 220, (Math.random() - 0.5) * 220);
+      if (this.hp <= 0) {
+        this.hp = 0;
+        this.alive = false;
+      }
+      return true;
+    }
+    update(dt, target, particles) {
+      this.dashCD = Math.max(0, this.dashCD - dt);
+      this.dashT = Math.max(0, this.dashT - dt);
+      this.invuln = Math.max(0, this.invuln - dt);
+      this.hurt = Math.max(0, this.hurt - dt * 2.2);
+      if (this.caught) {
+        this.mouth = 0;
+        this._animate(dt, 0.4);
+        return;
+      }
+      const steering = target && target.active;
+      if (steering) {
+        const f = this.freq;
+        this.vx += (f * f * (target.x - this.x) - 2 * f * this.vx) * dt;
+        this.vy += (f * f * (target.y - this.y) - 2 * f * this.vy) * dt;
+      }
+      const drag = FISH.dragPerSec * (steering ? 0.12 : 1);
+      this.vx -= this.vx * drag * dt;
+      this.vy -= this.vy * drag * dt;
+      const sp = Math.hypot(this.vx, this.vy);
+      const max = this.speed * (this.dashT > 0 ? 2.1 : 1);
+      if (sp > max) {
+        this.vx *= max / sp;
+        this.vy *= max / sp;
+      }
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      const top = surfaceLimit(this.r), bot = seabedLimit(this.r);
+      if (this.y < top) {
+        this.y = top;
+        this.vy *= -0.3;
+      }
+      if (this.y > bot) {
+        this.y = bot;
+        this.vy *= -0.3;
+      }
+      if (this.x < 60) {
+        this.x = 60;
+        this.vx = Math.max(0, this.vx);
+      }
+      this.mouth = Math.max(0, this.mouth - dt * 3);
+      this._animate(dt, Math.min(1, sp / this.speed));
+      if (Math.random() < 0.04) particles.spawn(this.x + this.r * 0.4, this.y - this.r * 0.2, "bubble", 6, -20);
+    }
+    _animate(dt, effort) {
+      this.flap += dt * FISH.finFlap * (0.5 + effort * 1.1);
+      if (Math.abs(this.vx) > 18) this.face = this.vx < 0 ? -1 : 1;
+      this.pitch = clamp(Math.atan2(this.vy, Math.max(60, Math.abs(this.vx))) * 0.55, -0.5, 0.5);
+      this._blinkT -= dt;
+      if (this._blinkT <= 0) {
+        this._blinkT = 2 + Math.random() * 3;
+        this.blink = 0;
+      }
+      this.blink = Math.min(1, this.blink + dt * 7);
+    }
+    render(ctx3, t) {
+      ctx3.save();
+      ctx3.translate(this.x, this.y);
+      if (this.caught) ctx3.rotate(Math.sin(t * 18) * 0.12);
+      ctx3.scale(this.face, 1);
+      ctx3.rotate(this.pitch);
+      const flashing = this.invuln > 0 && Math.floor(this.invuln * 14) % 2 === 0;
+      if (flashing) ctx3.globalAlpha = 0.45;
+      drawSunfish(ctx3, this.r, t, {
+        flap: this.flap,
+        blink: this.blink,
+        hurt: this.hurt,
+        lookX: 1,
+        mouth: this.mouth,
+        dash: this.dashT > 0
+      });
+      ctx3.globalAlpha = 1;
+      ctx3.restore();
+    }
+  };
+  var Seal = class {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.vx = 0;
+      this.vy = 0;
+      this.r = 46;
+      this.state = "patrol";
+      this.t = 0;
+      this.face = -1;
+      this.mouth = 0;
+      this.chaseT = 0;
+      this.lungeDir = { x: -1, y: 0 };
+      this.dead = false;
+      this.biteCD = 0;
+      this.homeY = y;
+    }
+    update(dt, env2) {
+      this.t += dt;
+      this.biteCD = Math.max(0, this.biteCD - dt);
+      const p = env2.player;
+      const d = dist(this.x, this.y, p.x, p.y);
+      this.face = p.x < this.x ? -1 : 1;
+      switch (this.state) {
+        case "patrol": {
+          this.vx = Math.sin(this.t * 0.8) * 40;
+          this.vy = (this.homeY - this.y) * 0.6 + Math.sin(this.t * 0.5) * 20;
+          if (d < SEAL.detectRange && p.alive) {
+            this.state = "chase";
+            this.chaseT = 0;
+          }
+          break;
+        }
+        case "chase": {
+          this.chaseT += dt;
+          const a = Math.atan2(p.y - this.y, p.x - this.x);
+          this.vx = Math.cos(a) * SEAL.speed;
+          this.vy = Math.sin(a) * SEAL.speed;
+          if (d < 150) {
+            this.state = "windup";
+            this.t = 0;
+            this.mouth = 0;
+          } else if (this.chaseT > SEAL.giveUp) this.state = "leaving";
+          break;
+        }
+        case "windup": {
+          this.vx *= 0.8;
+          this.vy *= 0.8;
+          this.mouth = Math.min(1, this.mouth + dt / SEAL.lungeWindup);
+          if (this.t >= SEAL.lungeWindup) {
+            const a = Math.atan2(p.y - this.y, p.x - this.x);
+            this.lungeDir = { x: Math.cos(a), y: Math.sin(a) };
+            this.state = "lunge";
+            this.t = 0;
+          }
+          break;
+        }
+        case "lunge": {
+          this.vx = this.lungeDir.x * SEAL.lungeSpeed;
+          this.vy = this.lungeDir.y * SEAL.lungeSpeed;
+          if (this.t >= SEAL.lungeDur) {
+            this.state = "rest";
+            this.t = 0;
+          }
+          break;
+        }
+        case "rest": {
+          this.vx *= 0.9;
+          this.vy *= 0.9;
+          this.mouth = Math.max(0, this.mouth - dt * 2);
+          if (this.t >= SEAL.rest) {
+            this.state = d < SEAL.detectRange && p.alive ? "chase" : "leaving";
+            this.chaseT = 0;
+          }
+          break;
+        }
+        case "leaving": {
+          this.vx = lerp(this.vx, this.face * 40, dt);
+          this.vy = lerp(this.vy, 120, dt * 2);
+          break;
+        }
+      }
+      this.y = clamp(this.y + this.vy * dt, WATER.surfaceBand, REF_H - WATER.seabedBand * 0.5);
+      this.x += this.vx * dt;
+    }
+    // mouth tip world position for bite checks
+    bitePoint() {
+      return { x: this.x + this.face * this.r * 1.1, y: this.y };
+    }
+    canBite() {
+      return (this.state === "lunge" || this.state === "chase") && this.biteCD <= 0;
+    }
+    render(ctx3, t) {
+      ctx3.save();
+      ctx3.translate(this.x, this.y);
+      ctx3.scale(this.face, 1);
+      if (this.state === "windup") {
+        const a = 0.3 + 0.4 * Math.sin(t * 22);
+        ctx3.fillStyle = rgba("#ffdf7a", a);
+        ctx3.beginPath();
+        ctx3.arc(this.r * 1, -this.r * 0.9, 5 + 3 * Math.sin(t * 22), 0, TAU);
+        ctx3.fill();
+        ctx3.fillStyle = rgba("#ffdf7a", a);
+        ctx3.fillRect(this.r * 0.9, -this.r * 1.4, 3, 8);
+      }
+      drawSeal(ctx3, this.r, t, { mouth: this.mouth });
+      ctx3.restore();
+    }
+  };
+  var Boat = class {
+    constructor(x, dir) {
+      this.x = x;
+      this.dir = dir;
+      this.w = 240;
+      this.r = 130;
+      this.netW = this.w * 1.25;
+      this.netD = BOAT.netDepth;
+      this.y = BOAT.hullY;
+      this.t = 0;
+    }
+    get hullY() {
+      return this.y + Math.sin(this.t * 1.5) * 6;
+    }
+    update(dt) {
+      this.t += dt;
+      this.x += this.dir * BOAT.speed * dt;
+    }
+    // net snare rectangle in world space (below the hull)
+    netBounds() {
+      return { x0: this.x - this.netW / 2, x1: this.x + this.netW / 2, y0: this.hullY + 30, y1: this.hullY + 30 + this.netD };
+    }
+    propPoint() {
+      return { x: this.x - this.dir * this.w * 0.46, y: this.hullY + this.w * 0.16 };
+    }
+    render(ctx3, t, caughtFish) {
+      const hy = this.hullY;
+      ctx3.save();
+      ctx3.translate(this.x, hy + 30);
+      drawNet(ctx3, this.netW, this.netD, t, caughtFish ? 0.8 : 0);
+      ctx3.restore();
+      ctx3.save();
+      ctx3.translate(this.x, hy);
+      ctx3.scale(this.dir, 1);
+      drawBoat(ctx3, this.w, t);
+      ctx3.restore();
+      const pp = this.propPoint();
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.25);
+      ctx3.beginPath();
+      ctx3.arc(pp.x, pp.y, BOAT.propRadius * (1 + 0.1 * Math.sin(t * 30)), 0, TAU);
+      ctx3.fill();
+    }
+  };
+  var Jelly = class {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.r = 40;
+      this.t = Math.random() * 6;
+      this.driftX = (Math.random() - 0.5) * 30;
+      this.dead = false;
+    }
+    get hitR() {
+      return this.r * 0.8;
+    }
+    update(dt) {
+      this.t += dt;
+      this.x += (this.driftX + Math.sin(this.t * 0.8) * 18) * dt;
+      this.y -= JELLY.driftSpeed * dt * (0.7 + 0.3 * Math.sin(this.t));
+      if (this.y < WATER.surfaceBand - 60) this.dead = true;
+    }
+    render(ctx3, t) {
+      ctx3.save();
+      ctx3.translate(this.x, this.y);
+      drawJelly(ctx3, this.r, this.t);
+      ctx3.restore();
+    }
+  };
+  var Rock = class {
+    constructor(x, y, r, seed) {
+      this.x = x;
+      this.y = y;
+      this.r = r;
+      this.seed = seed;
+    }
+    get hitR() {
+      return this.r * 0.7;
+    }
+    render(ctx3) {
+      ctx3.save();
+      ctx3.translate(this.x, this.y);
+      drawRock(ctx3, this.r, this.seed);
+      ctx3.restore();
+    }
+  };
+  var Plankton = class {
+    constructor(x, y, big = false) {
+      this.x = x;
+      this.y = y;
+      this.r = big ? 26 : 17;
+      this.value = big ? 5 : 1;
+      this.t = Math.random() * 6;
+      this.dead = false;
+      this.baseY = y;
+    }
+    update(dt) {
+      this.t += dt;
+      this.y = this.baseY + Math.sin(this.t * 1.5) * 10;
+    }
+    render(ctx3) {
+      ctx3.save();
+      ctx3.translate(this.x, this.y);
+      drawPlankton(ctx3, this.r, this.t);
+      ctx3.restore();
+    }
+  };
+  var Kelp = class {
+    constructor(x, h, seed) {
+      this.x = x;
+      this.h = h;
+      this.seed = seed;
+    }
+    render(ctx3, t) {
+      ctx3.save();
+      ctx3.translate(this.x, REF_H - WATER.seabedBand + 10);
+      drawKelp(ctx3, this.h, t, this.seed);
+      ctx3.restore();
+    }
+  };
+  var Current = class {
+    constructor(x0, x1, y0, y1, fx, fy) {
+      this.x0 = x0;
+      this.x1 = x1;
+      this.y0 = y0;
+      this.y1 = y1;
+      this.fx = fx;
+      this.fy = fy;
+    }
+    contains(x, y) {
+      return x > this.x0 && x < this.x1 && y > this.y0 && y < this.y1;
+    }
+  };
+  var Particles = class {
+    constructor(max = 360) {
+      this.max = max;
+      this.pool = new Array(max);
+      for (let i = 0; i < max; i++) this.pool[i] = { life: 0 };
+      this.head = 0;
+    }
+    spawn(x, y, kind, vx = 0, vy = 0, opts = {}) {
+      const pr = this.pool[this.head];
+      this.head = (this.head + 1) % this.max;
+      pr.x = x;
+      pr.y = y;
+      pr.vx = vx;
+      pr.vy = vy;
+      pr.kind = kind;
+      pr.life = pr.maxLife = opts.life ?? (kind === "bubble" ? 2.4 : 0.8);
+      pr.size = opts.size ?? (kind === "bubble" ? 2 + Math.random() * 4 : 3 + Math.random() * 4);
+      pr.color = opts.color ?? null;
+      pr.seed = Math.random() * 100;
+    }
+    burst(x, y, kind, n, spd, opts) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * TAU, s = spd * (0.4 + Math.random() * 0.6);
+        this.spawn(x, y, kind, Math.cos(a) * s, Math.sin(a) * s, opts);
+      }
+    }
+    update(dt) {
+      for (const pr of this.pool) {
+        if (pr.life <= 0) continue;
+        pr.life -= dt;
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+        if (pr.kind === "bubble") {
+          pr.vy -= 26 * dt;
+          pr.x += Math.sin((pr.maxLife - pr.life) * 6 + pr.seed) * 14 * dt;
+          pr.vx *= 0.98;
+        } else if (pr.kind === "inkpuff") {
+          pr.vx *= 0.9;
+          pr.vy *= 0.9;
+        } else if (pr.kind === "sparkle") {
+          pr.vy += 40 * dt;
+          pr.vx *= 0.96;
+        } else if (pr.kind === "egg") {
+          pr.vy -= 8 * dt;
+          pr.vx *= 0.99;
+        } else if (pr.kind === "foam") {
+          pr.vy += 60 * dt;
+        }
+      }
+    }
+    render(ctx3) {
+      for (const pr of this.pool) {
+        if (pr.life <= 0) continue;
+        const a = clamp(pr.life / pr.maxLife, 0, 1);
+        if (pr.kind === "bubble") {
+          ctx3.strokeStyle = rgba("#dff3f7", a * 0.7);
+          ctx3.lineWidth = 1.4;
+          ctx3.beginPath();
+          ctx3.arc(pr.x, pr.y, pr.size, 0, TAU);
+          ctx3.stroke();
+        } else if (pr.kind === "inkpuff") {
+          ctx3.fillStyle = rgba("#16302f", a * 0.5);
+          ctx3.beginPath();
+          ctx3.arc(pr.x, pr.y, pr.size * (1.4 - a), 0, TAU);
+          ctx3.fill();
+        } else if (pr.kind === "sparkle") {
+          ctx3.fillStyle = rgba(pr.color || "#ffd97a", a);
+          ctx3.beginPath();
+          ctx3.arc(pr.x, pr.y, pr.size * a, 0, TAU);
+          ctx3.fill();
+        } else if (pr.kind === "egg") {
+          ctx3.save();
+          ctx3.translate(pr.x, pr.y);
+          ctx3.globalAlpha = a;
+          drawEgg(ctx3, pr.size);
+          ctx3.restore();
+          ctx3.globalAlpha = 1;
+        } else if (pr.kind === "foam") {
+          ctx3.fillStyle = rgba("#eaf6f7", a * 0.8);
+          ctx3.beginPath();
+          ctx3.arc(pr.x, pr.y, pr.size, 0, TAU);
+          ctx3.fill();
+        }
+      }
+    }
+  };
+
+  // js/world.js
+  function zoneAt(x) {
+    const f = x / WORLD.goalDistance;
+    for (const z of WORLD.zones) if (f <= z.end) return z;
+    return WORLD.zones[WORLD.zones.length - 1];
+  }
+  function rockAt(x, rng) {
+    const r = rng.range(42, 92);
+    const onFloor = rng.chance(0.7);
+    const y = onFloor ? REF_H - WATER.seabedBand - r * 0.3 : rng.range(REF_H * 0.32, REF_H - WATER.seabedBand - r);
+    return new Rock(x, y, r, Math.floor(rng() * 1e6));
+  }
+  function currentAt(x, rng) {
+    const w = rng.range(320, 620);
+    const top = rng.range(WATER.surfaceBand + 30, REF_H * 0.5);
+    const h = rng.range(180, 320);
+    const fx = (rng.chance(0.7) ? -1 : 1) * rng.range(70, 150);
+    const fy = (rng.chance(0.5) ? -1 : 1) * rng.range(20, 70);
+    return new Current(x, x + w, top, Math.min(REF_H - WATER.seabedBand, top + h), fx, fy);
+  }
+  var colY = (rng, pad = 110) => rng.range(WATER.surfaceBand + pad, REF_H - WATER.seabedBand - pad);
+  function generateWorld(seed) {
+    const rng = makeRng(seed >>> 0);
+    const G = WORLD.goalDistance;
+    const rocks = [], plankton = [], kelp = [], currents = [], spawners = [];
+    for (let x2 = 160; x2 < G; x2 += rng.range(240, 460)) {
+      if (rng.chance(0.6)) kelp.push(new Kelp(x2 + rng.range(-30, 30), rng.range(120, 280), Math.floor(rng() * 1e6)));
+    }
+    let x = 680;
+    while (x < G - 640) {
+      const z = zoneAt(x).id;
+      if (rng.chance(0.82)) plankton.push(new Plankton(x + rng.range(-40, 40), colY(rng, 80), rng.chance(0.12)));
+      if (z === "shallows") {
+        if (rng.chance(0.7)) rocks.push(rockAt(x, rng));
+      } else if (z === "drift") {
+        if (rng.chance(0.45)) rocks.push(rockAt(x, rng));
+        if (rng.chance(0.5)) currents.push(currentAt(x, rng));
+      } else if (z === "deep") {
+        if (rng.chance(0.4)) rocks.push(rockAt(x, rng));
+        if (rng.chance(0.4)) currents.push(currentAt(x, rng));
+        if (rng.chance(0.5)) spawners.push({ x, type: "seal", y: colY(rng, 130) });
+        if (rng.chance(0.4)) spawners.push({ x: x + rng.range(40, 140), type: "jelly", y: colY(rng, 90) });
+      } else if (z === "lane") {
+        if (rng.chance(0.3)) rocks.push(rockAt(x, rng));
+        if (rng.chance(0.35)) currents.push(currentAt(x, rng));
+        if (rng.chance(0.4)) spawners.push({ x, type: "seal", y: colY(rng, 130) });
+        if (rng.chance(0.3)) spawners.push({ x, type: "jelly", y: colY(rng, 90) });
+        if (rng.chance(0.62)) spawners.push({ x, type: "boat", dir: rng.chance(0.5) ? -1 : 1 });
+      } else {
+        plankton.push(new Plankton(x, colY(rng, 70), rng.chance(0.3)));
+        if (rng.chance(0.4)) plankton.push(new Plankton(x + rng.range(60, 160), colY(rng, 70), false));
+      }
+      x += rng.range(300, 520);
+    }
+    spawners.sort((a, b) => a.x - b.x);
+    return { rocks, plankton, kelp, currents, spawners, goal: G };
+  }
+
+  // js/strings.js
+  var STR = {
+    title: "SUNFISH",
+    subtitle: "a useless odyssey",
+    tagline: "The ocean\u2019s least competent fish has somewhere to be.",
+    tapToStart: "tap \xB7 click \xB7 press to begin",
+    dragHint: "Drag anywhere to swim \u2014 flick to dash",
+    keyHint: "or use WASD / arrows / a gamepad stick",
+    goalAtlantic: "ATLANTIC",
+    goalPacific: "PACIFIC",
+    hudPlankton: "plankton",
+    hudBest: "furthest",
+    shopTitle: "Tide-Pool Outfitters",
+    shopBlurb: "Spend hard-won plankton. Become a marginally less useless fish.",
+    shopBack: "back",
+    shopMaxed: "MAXED",
+    shopBanked: "banked",
+    shopCost: "cost",
+    shopCantAfford: "not enough plankton",
+    caught: "CAUGHT IN A NET!",
+    struggle: "WIGGLE! drag back and forth!",
+    zoneEnter: (n) => n,
+    win: "YOU MADE IT.",
+    winSub: "Against all reason, the useless fish crosses an ocean.",
+    eggsLaid: (n) => `${n.toLocaleString()} eggs drift into the blue`,
+    winFunFact: "A real sunfish can lay 300 million eggs. You did your best.",
+    deaths: [
+      "A seal had a snack. You were the snack.",
+      "Splat. Rocks: 1, Fish: 0.",
+      "Caught, hauled up, and deeply confused.",
+      "The propeller did propeller things.",
+      "Stung silly by a drifting jelly.",
+      "You simply gave up. Understandable."
+    ],
+    deathTitle: "A USELESS END",
+    retry: "try again",
+    toShop: "upgrades",
+    distance: (m) => `${Math.round(m)} m`,
+    paused: "paused",
+    muted: "sound off",
+    unmuted: "sound on",
+    rotate: "Turn your device \u2014 this fish prefers landscape.",
+    funFacts: [
+      "The ocean sunfish (Mola mola) is the heaviest bony fish alive.",
+      "It mostly eats jellyfish, which are basically water.",
+      "Sailors thought it was a head with no body. Rude, but fair.",
+      "It sunbathes on its side at the surface. That\u2019s the whole plan.",
+      "Seabirds land on it to pick off its parasites. Free spa."
+    ]
+  };
+
+  // js/game.js
+  var SAVE_KEY = "sunfish.useless.v1";
+  var FONT = (s, w = "700") => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
+  function loadSave() {
+    try {
+      return Object.assign({ plankton: 0, best: 0, runs: 0, mute: false, upg: {} }, JSON.parse(localStorage.getItem(SAVE_KEY)) || {});
+    } catch (e) {
+      return { plankton: 0, best: 0, runs: 0, mute: false, upg: {} };
+    }
+  }
+  function wobblyText(ctx3, text, x, y, size, color, seed = 1) {
+    ctx3.save();
+    ctx3.font = FONT(size, "800");
+    ctx3.textAlign = "left";
+    ctx3.textBaseline = "middle";
+    const total = ctx3.measureText(text).width;
+    let cx = x - total / 2;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const w = ctx3.measureText(ch).width;
+      const r = (hash1(seed + i * 7) - 0.5) * 0.13;
+      ctx3.save();
+      ctx3.translate(cx + w / 2, y + (hash1(seed + i) - 0.5) * size * 0.06);
+      ctx3.rotate(r);
+      ctx3.fillStyle = color;
+      ctx3.fillText(ch, -w / 2, 0);
+      ctx3.restore();
+      cx += w;
+    }
+    ctx3.restore();
+  }
+  function roundRect(ctx3, x, y, w, h, r) {
+    ctx3.beginPath();
+    ctx3.moveTo(x + r, y);
+    ctx3.arcTo(x + w, y, x + w, y + h, r);
+    ctx3.arcTo(x + w, y + h, x, y + h, r);
+    ctx3.arcTo(x, y + h, x, y, r);
+    ctx3.arcTo(x, y, x + w, y, r);
+    ctx3.closePath();
+  }
+  var Game = class {
+    constructor() {
+      this.save = loadSave();
+      Audio.setMuted(this.save.mute);
+      this.bg = new Background();
+      this.particles = new Particles(380);
+      this.state = "menu";
+      this.t = 0;
+      this.camX = 0;
+      this.menuFlap = 0;
+      this.banner = null;
+      this._buttons = [];
+      this.view = { w: 800, h: 450, scale: 1, camX: 0, worldViewW: 800 };
+      this.deathMsg = "";
+      this.eggs = 0;
+      this.funFact = STR.funFacts[0];
+    }
+    stats() {
+      const u = this.save.upg;
+      return {
+        maxHp: COMBAT.baseMaxHP + (u.vitality || 0),
+        speedMul: 1 + (u.grace || 0) * 0.1,
+        freqMul: 1 + (u.grace || 0) * 0.06,
+        dashLevel: u.dash || 0,
+        skinLevel: u.skin || 0,
+        roeLevel: u.roe || 0
+      };
+    }
+    startRun() {
+      this.seed = Math.floor(Math.random() * 2147483647) >>> 0;
+      this.world = generateWorld(this.seed);
+      this.player = new Player(this.stats());
+      this.seals = [];
+      this.boats = [];
+      this.jellies = [];
+      this.spawnIdx = 0;
+      this.runPlankton = 0;
+      this.runHits = 0;
+      this.camX = 0;
+      this.curZone = null;
+      this.layT = 0;
+      this.state = "play";
+      this.banner = { text: WORLD.zones[0].name, life: 2.6 };
+      this.curZone = WORLD.zones[0].id;
+      this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
+      Audio.music(true);
+      Audio.sea(true);
+    }
+    // ---------------------------------------------------------------- UPDATE
+    update(dt, now) {
+      this.t += dt;
+      if (Input.muteRequested()) {
+        this.save.mute = Audio.toggleMute();
+        this.persist();
+      }
+      this.menuFlap += dt * 2.2;
+      if (this.banner) {
+        this.banner.life -= dt;
+        if (this.banner.life <= 0) this.banner = null;
+      }
+      this.particles.update(dt);
+      if (this.state === "menu" || this.state === "shop") {
+        this.updateMenu();
+        return;
+      }
+      if (this.state === "dead" || this.state === "win") {
+        this.updateEnd();
+        return;
+      }
+      const pl = this.player;
+      this.activateSpawners();
+      const { scale } = this.view;
+      let target = { x: 0, y: 0, active: false };
+      if (this.state === "play") {
+        if (Input.active) {
+          target = { x: this.camX + Input.sx / scale, y: Input.sy / scale, active: true };
+        } else if (Math.hypot(Input.dir.x, Input.dir.y) > 0.1) {
+          target = { x: pl.x + Input.dir.x * 150, y: pl.y + Input.dir.y * 150, active: true };
+        }
+        if (Input.consumeDash(now)) {
+          let d = Math.hypot(Input.dir.x, Input.dir.y) > 0.1 ? { x: Input.dir.x, y: Input.dir.y } : Input.active ? Input.flickDir() : null;
+          if (!d) {
+            const sp = Math.hypot(pl.vx, pl.vy);
+            d = sp > 12 ? { x: pl.vx / sp, y: pl.vy / sp } : { x: pl.face, y: 0 };
+          }
+          pl.tryDash(d, Audio, this.particles);
+        }
+      }
+      if (pl.caught) this.updateCaught(dt, now);
+      else pl.update(dt, target, this.particles);
+      if (this.state === "play" && !pl.caught) {
+        for (const c of this.world.currents) {
+          if (c.contains(pl.x, pl.y)) {
+            pl.vx += c.fx * dt;
+            pl.vy += c.fy * dt;
+          }
+        }
+      }
+      for (const s of this.seals) s.update(dt, { player: pl });
+      for (const b of this.boats) b.update(dt);
+      for (const j of this.jellies) j.update(dt);
+      for (const p of this.world.plankton) if (!p.dead) p.update(dt);
+      this.jellies = this.jellies.filter((j) => !j.dead && j.x > this.camX - 400);
+      this.seals = this.seals.filter((s) => !(s.state === "leaving" && (s.y > REF_H || s.x < this.camX - 500)));
+      this.boats = this.boats.filter((b) => b.x > this.camX - 700 && b.x < this.camX + this.view.worldViewW + 1400);
+      if (this.state === "play" && !pl.caught) this.collide();
+      const z = zoneAt(pl.x);
+      if (z.id !== this.curZone) {
+        this.curZone = z.id;
+        this.banner = { text: z.name, life: 2.6 };
+        if (z.id === "lane") Audio.sfx("warn");
+      }
+      if (Math.random() < 0.3) {
+        this.particles.spawn(
+          this.camX + Math.random() * this.view.worldViewW,
+          REF_H - WATER.seabedBand - Math.random() * 40,
+          "bubble",
+          0,
+          -20
+        );
+      }
+      if (this.state === "play" && pl.x >= this.world.goal - 30) this.beginLaying();
+      if (this.state === "laying") this.updateLaying(dt);
+      if (!pl.alive && this.state === "play") this.die();
+      const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
+      this.camX = lerp(this.camX, camTarget, clamp(dt * 5, 0, 1));
+    }
+    activateSpawners() {
+      const lookX = this.camX + this.view.worldViewW + 220;
+      const sp = this.world.spawners;
+      while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < lookX) {
+        const s = sp[this.spawnIdx++];
+        if (s.type === "seal") this.seals.push(new Seal(s.x, s.y));
+        else if (s.type === "jelly") this.jellies.push(new Jelly(s.x, s.y));
+        else if (s.type === "boat") this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir));
+      }
+    }
+    collide() {
+      const pl = this.player;
+      for (const r of this.world.rocks) {
+        if (Math.abs(r.x - pl.x) > 300) continue;
+        const d = dist(r.x, r.y, pl.x, pl.y), min = r.hitR + pl.hitR;
+        if (d < min) {
+          const nx = (pl.x - r.x) / (d || 1), ny = (pl.y - r.y) / (d || 1);
+          const speed = Math.hypot(pl.vx, pl.vy);
+          pl.x = r.x + nx * min;
+          pl.y = r.y + ny * min;
+          const into = pl.vx * nx + pl.vy * ny;
+          if (into < 0) {
+            pl.vx -= into * nx;
+            pl.vy -= into * ny;
+          }
+          if (speed > COMBAT.rockSplatSpeed) pl.hit(1, nx * 160, ny * 160, Audio, this.particles);
+        }
+      }
+      for (const s of this.seals) {
+        if (!s.canBite()) continue;
+        const bp = s.bitePoint();
+        if (dist(bp.x, bp.y, pl.x, pl.y) < pl.hitR + 24) {
+          if (pl.hit(SEAL.damage, (pl.x - s.x) * 1.6, (pl.y - s.y) * 1.6, Audio, this.particles)) {
+            s.biteCD = 1.3;
+            s.state = "rest";
+            s.t = 0;
+            this.runHits++;
+          }
+        }
+      }
+      for (const j of this.jellies) {
+        if (dist(j.x, j.y, pl.x, pl.y) < pl.hitR + j.hitR) {
+          if (pl.hit(JELLY.damage, (pl.x - j.x) * 2, (pl.y - j.y) * 2, Audio, this.particles)) {
+            j.driftX = pl.x - j.x;
+            this.runHits++;
+          }
+        }
+      }
+      for (const b of this.boats) {
+        const pp = b.propPoint();
+        if (dist(pp.x, pp.y, pl.x, pl.y) < pl.hitR + BOAT.propRadius) {
+          if (pl.hit(BOAT.propDamage, (pl.x - pp.x) * 2, -180, Audio, this.particles)) {
+            this.runHits++;
+            this.particles.burst(pl.x, pl.y, "foam", 14, 220);
+          }
+        }
+        const nb = b.netBounds();
+        if (pl.invuln <= 0 && pl.x > nb.x0 && pl.x < nb.x1 && pl.y > nb.y0 && pl.y < nb.y1) {
+          pl.caught = b;
+          pl.haul = 0;
+          pl.escape = 0;
+          Audio.sfx("snare");
+        }
+      }
+      for (const p of this.world.plankton) {
+        if (p.dead) continue;
+        if (Math.abs(p.x - pl.x) > 200) continue;
+        if (dist(p.x, p.y, pl.x, pl.y) < pl.hitR + p.r + 14) {
+          p.dead = true;
+          this.runPlankton += p.value;
+          pl.mouth = 1;
+          Audio.sfx("pickup");
+          this.particles.burst(p.x, p.y, "sparkle", p.value > 1 ? 12 : 6, 150, { color: PALETTE.amberSoft });
+          if (p.value > 1 && pl.hp < pl.maxHp && Math.random() < 0.4) pl.hp++;
+        }
+      }
+    }
+    updateCaught(dt, now) {
+      const pl = this.player, b = pl.caught;
+      if (!b) return;
+      pl.x = lerp(pl.x, b.x, clamp(dt * 1.8, 0, 1));
+      const surfTarget = b.hullY + 46;
+      pl.y = lerp(pl.y, lerp(seabedLimit(pl.r), surfTarget, pl.haul), clamp(dt * 4, 0, 1));
+      pl.vx *= 0.8;
+      pl.vy *= 0.8;
+      pl.haul += dt / COMBAT.netSnareTime;
+      const skin = 1 + this.stats().skinLevel * 0.4;
+      let struggling = Input.speed > 650;
+      if (!struggling && Math.hypot(Input.dir.x, Input.dir.y) > 0.1) struggling = true;
+      if (struggling) {
+        pl.haul -= dt * 1.5 * skin;
+        pl.escape += dt * 0.85 * skin;
+        if (Math.random() < 0.5) this.particles.spawn(pl.x, pl.y, "bubble", (Math.random() - 0.5) * 120, -40);
+      }
+      pl.haul = clamp(pl.haul, 0, 1.2);
+      if (pl.escape >= 1) {
+        pl.caught = null;
+        pl.invuln = COMBAT.netEscapeIFrames;
+        pl.vy = 240;
+        pl.vx = (Math.random() - 0.5) * 120;
+        Audio.sfx("escape");
+        this.particles.burst(pl.x, pl.y, "bubble", 12, 160);
+      } else if (pl.haul >= 1) {
+        pl.hp = 0;
+        pl.alive = false;
+        pl.caught = null;
+        this.die("caught");
+      }
+    }
+    beginLaying() {
+      if (this.state !== "play") return;
+      this.state = "laying";
+      this.layT = 0;
+      this.player.vx *= 0.3;
+      Audio.sfx("eggs");
+      const s = this.stats();
+      this.eggs = Math.round((40 + this.runPlankton * 6 + this.player.hp * 25) * (1 + s.roeLevel * 0.6));
+    }
+    updateLaying(dt) {
+      this.layT += dt;
+      const pl = this.player;
+      pl.vx *= 0.92;
+      pl.vy *= 0.92;
+      pl.mouth = 0.4;
+      if (Math.random() < 0.7) {
+        this.particles.spawn(
+          pl.x - pl.r,
+          pl.y + (Math.random() - 0.5) * pl.r,
+          "egg",
+          -40 - Math.random() * 60,
+          (Math.random() - 0.5) * 60,
+          { life: 3.5, size: 5 + Math.random() * 4 }
+        );
+      }
+      if (this.layT > 2.7) {
+        this.save.best = Math.max(this.save.best, this.world.goal);
+        this.save.plankton += this.runPlankton;
+        this.save.runs++;
+        this.persist();
+        this.state = "win";
+      }
+    }
+    die(cause) {
+      this.save.best = Math.max(this.save.best, Math.round(this.player.x));
+      this.save.plankton += this.runPlankton;
+      this.save.runs++;
+      this.persist();
+      Audio.sea(false);
+      const msgs = STR.deaths;
+      this.deathMsg = cause === "caught" ? msgs[2] : msgs[Math.floor(Math.random() * msgs.length)];
+      this.particles.burst(this.player.x, this.player.y, "inkpuff", 16, 200);
+      this.state = "dead";
+    }
+    persist() {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(this.save));
+      } catch (e) {
+      }
+    }
+    // ----- menu / shop / end input ------------------------------------------
+    updateMenu() {
+      const tap = Input.takeTap();
+      const key = Input.anyJustPressed();
+      if (this.state === "menu") {
+        if (tap) {
+          const hit = this.hitButton(tap);
+          if (hit === "shop") {
+            this.state = "shop";
+            Audio.sfx("ui");
+            return;
+          }
+          if (hit === "mute") {
+            this.save.mute = Audio.toggleMute();
+            this.persist();
+            return;
+          }
+        }
+        if (tap || key) {
+          Audio.unlock();
+          this.startRun();
+        }
+      } else if (this.state === "shop") {
+        if (tap) {
+          const hit = this.hitButton(tap);
+          if (hit === "back") {
+            this.state = "menu";
+            Audio.sfx("ui");
+          } else if (hit && hit.startsWith("buy:")) this.buy(hit.slice(4));
+        } else if (key) {
+          this.state = "menu";
+          Audio.sfx("ui");
+        }
+      }
+    }
+    updateEnd() {
+      const tap = Input.takeTap();
+      const key = Input.anyJustPressed();
+      if (tap) {
+        if (this.hitButton(tap) === "shop") {
+          this.state = "shop";
+          Audio.sfx("ui");
+          return;
+        }
+        Audio.sfx("ui");
+        this.state = "menu";
+      } else if (key) {
+        Audio.sfx("ui");
+        this.state = "menu";
+      }
+    }
+    hitButton(tap) {
+      for (const b of this._buttons) {
+        if (tap.x >= b.x && tap.x <= b.x + b.w && tap.y >= b.y && tap.y <= b.y + b.h) return b.id;
+      }
+      return null;
+    }
+    buy(id) {
+      const def = UPGRADES.find((u) => u.id === id);
+      if (!def) return;
+      const lvl = this.save.upg[id] || 0;
+      if (lvl >= def.max) return;
+      const cost = def.baseCost + def.step * lvl;
+      if (this.save.plankton < cost) {
+        Audio.sfx("hurt");
+        return;
+      }
+      this.save.plankton -= cost;
+      this.save.upg[id] = lvl + 1;
+      this.persist();
+      Audio.sfx("buy");
+    }
+    // ---------------------------------------------------------------- RENDER
+    render(ctx3, view2) {
+      this.view = view2;
+      this.view.camX = this.camX;
+      const tint = this.zoneTint();
+      this.bg.render(ctx3, { ...view2, camX: this.camX }, this.t, tint);
+      if (this.state === "menu" || this.state === "shop") {
+        this.renderMenuWorld(ctx3, view2);
+      } else {
+        this.renderWorld(ctx3, view2);
+      }
+      this._buttons = [];
+      if (this.state === "menu") this.renderMenu(ctx3, view2);
+      else if (this.state === "shop") this.renderShop(ctx3, view2);
+      else if (this.state === "win") this.renderWin(ctx3, view2);
+      else if (this.state === "dead") this.renderDead(ctx3, view2);
+      else this.renderHUD(ctx3, view2);
+    }
+    zoneTint() {
+      if (this.state === "menu" || this.state === "shop" || !this.world) return WORLD.zones[0].tint;
+      const x = this.player ? this.player.x : 0;
+      const f = x / WORLD.goalDistance;
+      let prev = WORLD.zones[0];
+      for (let i = 0; i < WORLD.zones.length; i++) {
+        const z = WORLD.zones[i];
+        if (f <= z.end) {
+          const start = i === 0 ? 0 : WORLD.zones[i - 1].end;
+          return mixHex(prev.tint, z.tint, clamp((f - start) / (z.end - start), 0, 1));
+        }
+        prev = z;
+      }
+      return WORLD.zones[WORLD.zones.length - 1].tint;
+    }
+    worldXform(ctx3, view2) {
+      ctx3.save();
+      ctx3.scale(view2.scale, view2.scale);
+      ctx3.translate(-this.camX, 0);
+    }
+    renderWorld(ctx3, view2) {
+      this.worldXform(ctx3, view2);
+      const L = this.camX - 120, Rr = this.camX + view2.worldViewW + 120;
+      for (const k of this.world.kelp) if (k.x > L && k.x < Rr) k.render(ctx3, this.t);
+      for (const c of this.world.currents) if (c.x1 > L && c.x0 < Rr) this.bg.drawCurrent(ctx3, c, this.t);
+      for (const r of this.world.rocks) if (r.x > L && r.x < Rr) r.render(ctx3);
+      for (const p of this.world.plankton) if (!p.dead && p.x > L && p.x < Rr) p.render(ctx3);
+      for (const j of this.jellies) j.render(ctx3, this.t);
+      for (const s of this.seals) s.render(ctx3, this.t);
+      for (const b of this.boats) b.render(ctx3, this.t, this.player.caught === b);
+      if (this.player) this.player.render(ctx3, this.t);
+      this.particles.render(ctx3);
+      if (this.world.goal > L && this.world.goal < Rr + 400) this.drawGoal(ctx3);
+      ctx3.restore();
+    }
+    drawGoal(ctx3) {
+      const gx = this.world.goal, top = WATER.surfaceBand, bot = REF_H - WATER.seabedBand;
+      ctx3.save();
+      const g = ctx3.createLinearGradient(gx, top, gx, bot);
+      g.addColorStop(0, rgba(PALETTE.amberSoft, 0));
+      g.addColorStop(0.5, rgba(PALETTE.amberSoft, 0.22));
+      g.addColorStop(1, rgba(PALETTE.amber, 0));
+      ctx3.fillStyle = g;
+      ctx3.fillRect(gx - 80, top, 240, bot - top);
+      for (let i = 0; i < 5; i++) {
+        ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.5);
+        ctx3.beginPath();
+        ctx3.arc(gx + 30 + Math.sin(this.t + i) * 20, top + 60 + i * (bot - top) / 5, 4, 0, TAU);
+        ctx3.fill();
+      }
+      ctx3.restore();
+    }
+    renderMenuWorld(ctx3, view2) {
+      this.worldXform(ctx3, { ...view2 });
+      const cx = this.camX + view2.worldViewW * 0.5;
+      const cy = REF_H * 0.52 + Math.sin(this.menuFlap * 0.7) * 18;
+      ctx3.save();
+      ctx3.translate(cx, cy);
+      ctx3.rotate(Math.sin(this.menuFlap * 0.5) * 0.06);
+      drawSunfish(ctx3, 64, this.t, { flap: this.menuFlap, blink: 1, lookX: 1 });
+      ctx3.restore();
+      this.particles.render(ctx3);
+      ctx3.restore();
+    }
+    // ---- HUD ----
+    renderHUD(ctx3, view2) {
+      const { w, scale } = view2;
+      const pad = 14 * Math.max(1, scale * 0.7);
+      const pl = this.player;
+      if (!pl) return;
+      for (let i = 0; i < pl.maxHp; i++) this.drawHeart(ctx3, pad + i * 30, pad + 12, 11, i < pl.hp);
+      ctx3.font = FONT(18);
+      ctx3.textAlign = "right";
+      ctx3.textBaseline = "middle";
+      ctx3.fillStyle = PALETTE.amber;
+      ctx3.beginPath();
+      ctx3.arc(w - pad - 70, pad + 12, 7, 0, TAU);
+      ctx3.fill();
+      ctx3.fillStyle = PALETTE.foam;
+      ctx3.fillText(`${this.runPlankton}`, w - pad, pad + 12);
+      this.drawProgress(ctx3, view2);
+      if (this.stats().dashLevel > 0) {
+        const r = 16, dx = pad + r, dy = view2.h - pad - r;
+        ctx3.strokeStyle = rgba(PALETTE.foam, 0.4);
+        ctx3.lineWidth = 3;
+        ctx3.beginPath();
+        ctx3.arc(dx, dy, r, 0, TAU);
+        ctx3.stroke();
+        const ready = 1 - clamp(pl.dashCD / 1.05, 0, 1);
+        ctx3.strokeStyle = ready >= 1 ? PALETTE.amber : rgba(PALETTE.amberSoft, 0.7);
+        ctx3.beginPath();
+        ctx3.arc(dx, dy, r, -Math.PI / 2, -Math.PI / 2 + ready * TAU);
+        ctx3.stroke();
+        ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
+        ctx3.font = FONT(9);
+        ctx3.textAlign = "center";
+        ctx3.textBaseline = "middle";
+        ctx3.fillText("DASH", dx, dy);
+      }
+      if (this.banner) {
+        const a = clamp(this.banner.life, 0, 1) * clamp(2.6 - this.banner.life, 0, 1);
+        ctx3.globalAlpha = clamp(a + 0.2, 0, 1);
+        wobblyText(ctx3, this.banner.text, w / 2, view2.h * 0.26, 30, PALETTE.foam, 5);
+        ctx3.globalAlpha = 1;
+      }
+      if (pl.caught) {
+        ctx3.globalAlpha = 0.5 + 0.5 * Math.sin(this.t * 10);
+        wobblyText(ctx3, STR.caught, w / 2, view2.h * 0.34, 26, "#ffd36b", 9);
+        ctx3.globalAlpha = 1;
+        ctx3.font = FONT(15);
+        ctx3.textAlign = "center";
+        ctx3.fillStyle = PALETTE.foam;
+        ctx3.fillText(STR.struggle, w / 2, view2.h * 0.4);
+        const bw = Math.min(260, w * 0.5), bx = (w - bw) / 2, by = view2.h * 0.44;
+        ctx3.fillStyle = rgba("#000", 0.4);
+        roundRect(ctx3, bx, by, bw, 12, 6);
+        ctx3.fill();
+        ctx3.fillStyle = "#e2604f";
+        roundRect(ctx3, bx, by, bw * clamp(pl.haul, 0, 1), 12, 6);
+        ctx3.fill();
+        ctx3.fillStyle = PALETTE.amber;
+        roundRect(ctx3, bx, by + 16, bw * clamp(pl.escape, 0, 1), 8, 4);
+        ctx3.fill();
+      }
+    }
+    drawHeart(ctx3, x, y, s, full) {
+      ctx3.save();
+      ctx3.translate(x, y);
+      ctx3.beginPath();
+      ctx3.moveTo(0, s * 0.35);
+      ctx3.bezierCurveTo(-s, -s * 0.6, -s * 0.5, -s * 1.1, 0, -s * 0.45);
+      ctx3.bezierCurveTo(s * 0.5, -s * 1.1, s, -s * 0.6, 0, s * 0.35);
+      ctx3.closePath();
+      ctx3.fillStyle = full ? "#e2604f" : "rgba(255,255,255,0.12)";
+      ctx3.fill();
+      ctx3.strokeStyle = PALETTE.ink;
+      ctx3.lineWidth = 2;
+      ctx3.stroke();
+      ctx3.restore();
+    }
+    drawProgress(ctx3, view2) {
+      const { w } = view2;
+      const bw = Math.min(360, w * 0.5), bx = (w - bw) / 2, by = 20;
+      ctx3.font = FONT(10);
+      ctx3.textAlign = "left";
+      ctx3.textBaseline = "middle";
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
+      ctx3.fillText(STR.goalAtlantic, bx - 4, by - 10);
+      ctx3.textAlign = "right";
+      ctx3.fillText(STR.goalPacific, bx + bw + 4, by - 10);
+      ctx3.fillStyle = rgba("#06243a", 0.55);
+      roundRect(ctx3, bx, by, bw, 9, 4);
+      ctx3.fill();
+      const g = ctx3.createLinearGradient(bx, 0, bx + bw, 0);
+      g.addColorStop(0, "#2e7d8a");
+      g.addColorStop(1, PALETTE.amber);
+      const f = clamp((this.player ? this.player.x : 0) / this.world.goal, 0, 1);
+      ctx3.fillStyle = g;
+      roundRect(ctx3, bx, by, bw * f, 9, 4);
+      ctx3.fill();
+      ctx3.save();
+      ctx3.translate(bx + bw * f, by + 4.5);
+      ctx3.scale(0.16, 0.16);
+      drawSunfish(ctx3, 40, this.t, { flap: this.menuFlap * 3, blink: 1, lookX: 1 });
+      ctx3.restore();
+    }
+    // ---- screens ----
+    panel(ctx3, view2, h) {
+      const { w } = view2;
+      const pw = Math.min(560, w * 0.92), px = (w - pw) / 2, py = (view2.h - h) / 2;
+      ctx3.fillStyle = rgba("#0a2236", 0.82);
+      roundRect(ctx3, px, py, pw, h, 18);
+      ctx3.fill();
+      ctx3.strokeStyle = rgba(PALETTE.foam, 0.25);
+      ctx3.lineWidth = 2;
+      ctx3.stroke();
+      return { px, py, pw };
+    }
+    button(ctx3, id, x, y, w, h, label, enabled = true, accent = false) {
+      this._buttons.push({ id, x, y, w, h });
+      ctx3.fillStyle = enabled ? accent ? rgba(PALETTE.amber, 0.92) : rgba("#2e6f80", 0.95) : "rgba(120,120,120,0.3)";
+      roundRect(ctx3, x, y, w, h, 10);
+      ctx3.fill();
+      ctx3.strokeStyle = PALETTE.ink;
+      ctx3.lineWidth = 2.5;
+      ctx3.stroke();
+      ctx3.fillStyle = enabled ? accent ? "#3a2a10" : PALETTE.foam : "rgba(255,255,255,0.5)";
+      ctx3.font = FONT(15, "800");
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      ctx3.fillText(label, x + w / 2, y + h / 2 + 1);
+    }
+    renderMenu(ctx3, view2) {
+      const { w, h } = view2;
+      ctx3.textAlign = "center";
+      wobblyText(ctx3, STR.title, w / 2, h * 0.2, Math.min(72, w * 0.13), PALETTE.foam, 2);
+      ctx3.font = FONT(18, "600");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.textBaseline = "middle";
+      ctx3.fillText(STR.subtitle, w / 2, h * 0.2 + Math.min(58, w * 0.1));
+      ctx3.font = FONT(14, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
+      ctx3.fillText(STR.tagline, w / 2, h * 0.72);
+      ctx3.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 2.5);
+      ctx3.font = FONT(17, "700");
+      ctx3.fillStyle = PALETTE.foam;
+      ctx3.fillText(STR.tapToStart, w / 2, h * 0.8);
+      ctx3.globalAlpha = 1;
+      ctx3.font = FONT(12, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.6);
+      ctx3.fillText(STR.dragHint + "  \xB7  " + STR.keyHint, w / 2, h * 0.86);
+      ctx3.font = FONT(13, "600");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(`${STR.shopBanked}: ${this.save.plankton} ${STR.hudPlankton}   \xB7   ${STR.hudBest}: ${Math.round(this.save.best / 40)} leagues`, w / 2, h * 0.92);
+      this.button(ctx3, "shop", w / 2 - 130, h * 0.55, 120, 42, "\u2693 " + STR.toShop);
+      this.button(ctx3, "mute", w / 2 + 10, h * 0.55, 120, 42, Audio.isMuted() ? "\u{1F507} " + STR.muted : "\u{1F50A} " + STR.unmuted);
+    }
+    renderShop(ctx3, view2) {
+      const { w } = view2;
+      const ph = Math.min(440, view2.h * 0.9);
+      const { px, py, pw } = this.panel(ctx3, view2, ph);
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      wobblyText(ctx3, STR.shopTitle, w / 2, py + 34, 26, PALETTE.foam, 3);
+      ctx3.font = FONT(12, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.75);
+      ctx3.fillText(STR.shopBlurb, w / 2, py + 60);
+      ctx3.fillStyle = PALETTE.amber;
+      ctx3.font = FONT(15, "800");
+      ctx3.fillText(`${this.save.plankton} ${STR.hudPlankton} ${STR.shopBanked}`, w / 2, py + 84);
+      const rowH = (ph - 150) / UPGRADES.length;
+      UPGRADES.forEach((u, i) => {
+        const ry = py + 104 + i * rowH;
+        const lvl = this.save.upg[u.id] || 0;
+        const maxed = lvl >= u.max;
+        const cost = u.baseCost + u.step * lvl;
+        ctx3.textAlign = "left";
+        ctx3.textBaseline = "middle";
+        ctx3.font = FONT(15, "800");
+        ctx3.fillStyle = PALETTE.foam;
+        ctx3.fillText(u.name, px + 24, ry + 12);
+        ctx3.font = FONT(11, "500");
+        ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
+        ctx3.fillText(u.desc, px + 24, ry + 30);
+        for (let k = 0; k < u.max; k++) {
+          ctx3.fillStyle = k < lvl ? PALETTE.amber : "rgba(255,255,255,0.18)";
+          ctx3.beginPath();
+          ctx3.arc(px + 24 + k * 16, ry + 44, 5, 0, TAU);
+          ctx3.fill();
+        }
+        const bx = px + pw - 132;
+        if (maxed) {
+          ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.8);
+          ctx3.font = FONT(14, "800");
+          ctx3.textAlign = "center";
+          ctx3.fillText(STR.shopMaxed, bx + 54, ry + 24);
+        } else {
+          this.button(
+            ctx3,
+            "buy:" + u.id,
+            bx,
+            ry + 4,
+            108,
+            38,
+            `${cost} \u2618`,
+            this.save.plankton >= cost,
+            this.save.plankton >= cost
+          );
+        }
+      });
+      this.button(ctx3, "back", px + pw / 2 - 55, py + ph - 46, 110, 36, "\u2039 " + STR.shopBack);
+    }
+    renderWin(ctx3, view2) {
+      const { w, h } = view2;
+      ctx3.fillStyle = rgba("#06243a", 0.5);
+      ctx3.fillRect(0, 0, w, h);
+      wobblyText(ctx3, STR.win, w / 2, h * 0.26, Math.min(56, w * 0.1), PALETTE.amberSoft, 4);
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      ctx3.font = FONT(16, "600");
+      ctx3.fillStyle = PALETTE.foam;
+      ctx3.fillText(STR.winSub, w / 2, h * 0.37);
+      ctx3.font = FONT(22, "800");
+      ctx3.fillStyle = PALETTE.amber;
+      ctx3.fillText(STR.eggsLaid(this.eggs), w / 2, h * 0.47);
+      ctx3.font = FONT(13, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
+      ctx3.fillText(STR.winFunFact, w / 2, h * 0.55);
+      ctx3.fillText(`+${this.runPlankton} ${STR.hudPlankton}`, w / 2, h * 0.61);
+      this.button(ctx3, "retry", w / 2 - 130, h * 0.7, 120, 44, "\u21BA " + STR.retry, true, true);
+      this.button(ctx3, "shop", w / 2 + 10, h * 0.7, 120, 44, "\u2693 " + STR.toShop);
+    }
+    renderDead(ctx3, view2) {
+      const { w, h } = view2;
+      ctx3.fillStyle = rgba("#1a0d12", 0.5);
+      ctx3.fillRect(0, 0, w, h);
+      wobblyText(ctx3, STR.deathTitle, w / 2, h * 0.28, Math.min(48, w * 0.09), "#e8a0a0", 7);
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      ctx3.font = FONT(17, "600");
+      ctx3.fillStyle = PALETTE.foam;
+      ctx3.fillText(this.deathMsg, w / 2, h * 0.4);
+      ctx3.font = FONT(13, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
+      ctx3.fillText("\u{1F41F} " + this.funFact, w / 2, h * 0.48);
+      ctx3.font = FONT(14, "700");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(`+${this.runPlankton} ${STR.hudPlankton} banked   \xB7   ${STR.hudBest}: ${Math.round(this.save.best / 40)} leagues`, w / 2, h * 0.55);
+      this.button(ctx3, "retry", w / 2 - 130, h * 0.66, 120, 44, "\u21BA " + STR.retry, true, true);
+      this.button(ctx3, "shop", w / 2 + 10, h * 0.66, 120, 44, "\u2693 " + STR.toShop);
+    }
+    entityCount() {
+      return (this.seals ? this.seals.length : 0) + (this.boats ? this.boats.length : 0) + (this.jellies ? this.jellies.length : 0);
+    }
+  };
+
+  // js/main.js
+  var canvas = document.getElementById("c");
+  var ctx2 = canvas.getContext("2d", { alpha: false });
+  var devEl = document.getElementById("dev");
+  var game = new Game();
+  var view = { w: 0, h: 0, scale: 1, camX: 0, worldViewW: 0 };
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+    view.w = window.innerWidth;
+    view.h = window.innerHeight;
+    canvas.width = Math.round(view.w * dpr);
+    canvas.height = Math.round(view.h * dpr);
+    canvas.style.width = view.w + "px";
+    canvas.style.height = view.h + "px";
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    view.scale = view.h / REF_H;
+    view.worldViewW = view.w / view.scale;
+  }
+  addEventListener("resize", resize);
+  addEventListener("orientationchange", resize);
+  resize();
+  Input.init(canvas);
+  var unlock = () => Audio.unlock();
+  addEventListener("pointerdown", unlock, { once: true });
+  addEventListener("keydown", unlock, { once: true });
+  var paused = false;
+  addEventListener("blur", () => {
+    paused = true;
+  });
+  addEventListener("focus", () => {
+    paused = false;
+    last = performance.now();
+  });
+  document.addEventListener("visibilitychange", () => {
+    paused = document.hidden;
+    if (!paused) last = performance.now();
+  });
+  var dev = new URLSearchParams(location.search).has("dev");
+  if (dev) devEl.style.display = "block";
+  var acc = 0;
+  var last = performance.now();
+  var frames = 0;
+  var fpsAt = last;
+  var fps = 0;
+  var stepSec = STEP / 1e3;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (paused) {
+      last = now;
+      return;
+    }
+    let dtMs = now - last;
+    last = now;
+    if (dtMs > 250) dtMs = 250;
+    const nowSec = now / 1e3;
+    Input.update(nowSec);
+    Audio.update(dtMs / 1e3);
+    acc += dtMs;
+    let steps = 0;
+    while (acc >= STEP && steps < 5) {
+      game.update(stepSec, nowSec);
+      acc -= STEP;
+      steps++;
+    }
+    if (steps === 5) acc = 0;
+    game.render(ctx2, view);
+    if (dev) {
+      frames++;
+      if (now - fpsAt >= 500) {
+        fps = Math.round(frames * 1e3 / (now - fpsAt));
+        frames = 0;
+        fpsAt = now;
+      }
+      devEl.textContent = `${fps} fps \xB7 ${game.state} \xB7 ent ${game.entityCount?.() ?? 0}`;
+    }
+  }
+  requestAnimationFrame(frame);
+  window.__sunfish = game;
+})();
+
+</script>
+<script>var b=document.getElementById("boot");if(b)b.remove();</script>
+</body>
+</html>
