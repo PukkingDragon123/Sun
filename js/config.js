@@ -72,6 +72,34 @@ export const URCHIN = { damage: 1, radius: 26 };
 export const HOOK = { damage: 1, radius: 16, snare: true };
 export const ANCHOR = { radius: 64 };
 
+// ---- ambient waves: a slow surge that nudges you, strongest near the top ----
+export const WAVE = { surge: 54, freq: 0.42, swirl: 0.0009, depthKeep: 0.32 };
+
+// ---- status effects --------------------------------------------------------
+export const STATUS = {
+  slowMul: 0.55, slowTime: 1.8,
+  poisonTime: 6.5, poisonTick: 2.2, poisonDmg: 1,
+  parasiteDrainEach: 5.4,        // base seconds to lose 1 heart (÷ parasite count)
+  healTick: 3.0, healTime: 16,   // Nurse Shark regen booster
+  swiftMul: 1.5, swiftTime: 9,   // Swift Current booster
+  shieldTime: 7,                 // Bubble Shield booster
+};
+
+// ---- more predators --------------------------------------------------------
+export const SWORDFISH = { detectRange: 360, cruise: 62, windup: 0.7, lungeSpeed: 600, lungeDur: 0.5, rest: 1.7, damage: 1, reach: 540 };
+export const COOKIE = { detectRange: 430, cruise: 150, windup: 0.34, dartSpeed: 720, dartDur: 0.26, rest: 0.95, damage: 1, reach: 300 };
+export const ORCA = { detectRange: 700, cruise: 116, windup: 0.85, charge: 560, chargeDur: 0.82, rest: 1.9, damage: 3, reach: 640 };
+export const COPEPOD = { detectRange: 300, speed: 116 };
+export const SEAGULL = { diveSpeed: 560, damage: 1, interval: 5 };
+export const PLASTIC = { damage: 1, driftSpeed: 15 };
+
+// ---- pickup boosters -------------------------------------------------------
+export const BOOSTERS = [
+  { id: 'nurse',  name: 'Nurse Shark',   blurb: 'a gentle companion mends you', color: '#c2a875' },
+  { id: 'swift',  name: 'Swift Current', blurb: 'a burst of speed',             color: '#7fd0ff' },
+  { id: 'shield', name: 'Bubble Shield', blurb: 'a few moments untouchable',    color: '#bfe9f0' },
+];
+
 // ---- the journey -----------------------------------------------------------
 // A long ocean crossing. At the slow base speed a careful run is a real trek
 // (~12-18 min); meta-upgrades (Grace, Head Start, currents) make it shorter
@@ -160,7 +188,12 @@ export const PALETTE = {
   surfaceTeal: '#3d8aa0',
   deepNavy: '#0a2238',
   blood: '#e2604f',        // hurt flash & hearts
+  bloodDark: '#8e2b22',    // deeper gore
+  poison: '#9be36b',       // plastic / copepod sickness
+  plastic: '#d2dadf',      // floating bags
   danger: '#ff6a4d',       // mines / alarms
   bio: '#7CFFB2',          // bioluminescence (twilight/trench)
   shark: '#5d6b73',        // shark grey
+  blueShark: '#5a86b0',    // common mid-game blue shark
+  orca: '#1c2530',         // orca black
 };

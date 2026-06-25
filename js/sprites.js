@@ -69,6 +69,9 @@ export function drawSunfish(ctx, R, t, st = {}) {
     wash(ctx, Math.cos(a) * rr, Math.sin(a) * rr - 0.2 * R, 0.16 * R, shadeC, 0.4);
   }
   if (sk.pattern) drawPattern(ctx, R, t, sk.pattern, sk.patternColor || shadeC);
+  if (st.poison) wash(ctx, 0, -0.1 * R, 1.2 * R, P.poison, 0.26 + 0.1 * Math.sin(t * 4));
+  if (st.wounds && st.wounds.length) for (const w of st.wounds) drawWound(ctx, R, w);
+  if (st.parasites) drawParasites(ctx, R, st.parasites);
   if (hurt > 0) wash(ctx, 0, 0, 1.2 * R, P.blood, 0.55 * hurt);
   ctx.restore();
 
@@ -87,37 +90,21 @@ export function drawSunfish(ctx, R, t, st = {}) {
     { fill: finFill, lineW: 2, wobble: 1.6, key: 23 });
   ctx.restore();
 
-  // the big weary eye
-  const ex = 0.52 * R, ey = -0.30 * R, er = 0.21 * R;
-  sketchShape(ctx, blobPts(ex, ey, er, er, 10, 0.05, 31),
-    { fill: P.foam, lineW: 2.2, wobble: 1.2, key: 31 });
-  ctx.save();
-  ctx.beginPath(); ctx.ellipse(ex, ey, er, er * blink, 0, 0, TAU); ctx.clip();
+  // a single dumb little dot eye — barely sentient, sits low and forward
+  const ex = 0.54 * R, ey = -0.14 * R, er = 0.075 * R;
+  ctx.fillStyle = rgba(P.foam, 0.5);
+  ctx.beginPath(); ctx.arc(ex, ey, er * 2.1, 0, TAU); ctx.fill();   // faint socket so the dot reads on any skin
   ctx.fillStyle = P.ink;
-  ctx.beginPath();
-  ctx.arc(ex + look * 0.07 * R, ey + 0.03 * R, er * 0.62, 0, TAU); ctx.fill();
-  ctx.fillStyle = P.foam;
-  ctx.beginPath(); ctx.arc(ex + look * 0.07 * R - er * 0.2, ey - er * 0.22, er * 0.2, 0, TAU); ctx.fill();
-  ctx.restore();
-  // droopy upper lid -> weary look
-  ctx.strokeStyle = P.ink; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.ellipse(ex, ey - er * (1 - blink) * 0.2, er * 1.08, er * (0.5 + 0.5 * blink), 0,
-    Math.PI * 1.04, Math.PI * 2.02);
-  ctx.stroke();
+  ctx.beginPath(); ctx.arc(ex + look * 0.02 * R, ey, er * (0.45 + 0.55 * blink), 0, TAU); ctx.fill();
+  ctx.fillStyle = rgba(P.foam, 0.9);
+  ctx.beginPath(); ctx.arc(ex - er * 0.3, ey - er * 0.35, er * 0.4, 0, TAU); ctx.fill();
 
-  // tiny resigned mouth
-  ctx.strokeStyle = P.ink; ctx.lineWidth = 2.2;
-  if (mouth > 0.1) {
-    ctx.beginPath(); ctx.arc(1.0 * R, 0.18 * R, 0.07 * R * (0.6 + mouth), 0, TAU); ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(0.96 * R, 0.14 * R);
-    ctx.quadraticCurveTo(1.02 * R, 0.22 * R, 0.97 * R, 0.27 * R);
-    ctx.stroke();
-  }
+  // a permanently slightly-agape, gormless little mouth
+  ctx.strokeStyle = P.ink; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  const mo = 0.045 * R + mouth * 0.06 * R;
+  ctx.beginPath(); ctx.ellipse(0.95 * R, 0.24 * R, mo, mo * 1.2, 0, 0, TAU); ctx.stroke();
 
-  if (sk.accessory) drawAccessory(ctx, R, t, sk.accessory, ex, ey, er);
+  if (sk.accessory) drawAccessory(ctx, R, t, sk.accessory, ex, ey);
 }
 
 // skin patterns, drawn already clipped to the body
@@ -165,17 +152,15 @@ function star(ctx, x, y, s) {
 }
 
 // cosmetic accessories
-function drawAccessory(ctx, R, t, kind, ex, ey, er) {
+function drawAccessory(ctx, R, t, kind, ex, ey) {
   if (kind === 'shades') {
+    const L = 0.17 * R, cy = ey - 0.02 * R;
     ctx.fillStyle = '#10141a'; ctx.strokeStyle = P.ink; ctx.lineWidth = 2;
-    // lens over the eye
-    ctx.beginPath(); ctx.ellipse(ex, ey, er * 1.15, er * 0.9, -0.1, 0, TAU); ctx.fill();
-    // a second smaller lens toward the snout + bridge
-    ctx.beginPath(); ctx.ellipse(ex + er * 1.9, ey + er * 0.2, er * 0.7, er * 0.6, -0.1, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(ex + er, ey - er * 0.2); ctx.lineTo(ex + er * 1.4, ey - er * 0.05); ctx.stroke();
-    // glare
-    ctx.fillStyle = rgba('#ffffff', 0.5);
-    ctx.beginPath(); ctx.ellipse(ex - er * 0.3, ey - er * 0.3, er * 0.3, er * 0.16, -0.5, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex - L * 0.2, cy, L, L * 0.78, -0.08, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex + L * 1.5, cy + L * 0.1, L * 0.7, L * 0.6, -0.08, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(ex + L * 0.7, cy - L * 0.15); ctx.lineTo(ex + L * 0.95, cy - L * 0.05); ctx.stroke();
+    ctx.fillStyle = rgba('#ffffff', 0.55);
+    ctx.beginPath(); ctx.ellipse(ex - L * 0.4, cy - L * 0.3, L * 0.32, L * 0.16, -0.5, 0, TAU); ctx.fill();
   } else if (kind === 'crown') {
     ctx.save(); ctx.translate(0.34 * R, -0.96 * R); ctx.rotate(-0.12);
     ctx.fillStyle = P.amber; ctx.strokeStyle = P.ink; ctx.lineWidth = 2.2;
@@ -250,21 +235,22 @@ export function drawSeal(ctx, R, t, st = {}) {
 // ----------------------------------------------------------------- the shark
 export function drawShark(ctx, R, t, st = {}) {
   const mouth = st.mouth ?? 0;       // 0 closed .. 1 gaping
+  const col = st.color || P.shark;   // blue shark passes its own hue
   const swim = Math.sin(t * 5) * 0.05;
   const fill = ctx.createLinearGradient(0, -R, 0, R);
-  fill.addColorStop(0, mixHex(P.shark, '#cfe0e6', 0.25));
-  fill.addColorStop(0.55, P.shark);
-  fill.addColorStop(1, mixHex(P.shark, '#aeb9bf', 0.55)); // pale belly
+  fill.addColorStop(0, mixHex(col, '#cfe0e6', 0.25));
+  fill.addColorStop(0.55, col);
+  fill.addColorStop(1, mixHex(col, '#e9eef0', 0.6)); // pale belly
   // tail fin
   sketchShape(ctx, [
     { x: -1.2 * R, y: 0 }, { x: -1.85 * R, y: -0.7 * R }, { x: -1.55 * R, y: -0.05 * R },
     { x: -1.8 * R, y: 0.5 * R }, { x: -1.25 * R, y: 0.25 * R },
-  ], { fill: P.shark, lineW: 2.6, wobble: 2.2, key: 81 });
+  ], { fill: col, lineW: 2.6, wobble: 2.2, key: 81 });
   // dorsal fin (the famous one)
   sketchShape(ctx, [
     { x: -0.05 * R, y: -0.55 * R }, { x: 0.05 * R + swim * R, y: -1.25 * R },
     { x: 0.4 * R, y: -0.5 * R },
-  ], { fill: mixHex(P.shark, '#000', 0.12), lineW: 2.4, wobble: 2.2, key: 82 });
+  ], { fill: mixHex(col, '#000', 0.12), lineW: 2.4, wobble: 2.2, key: 82 });
   // torpedo body
   const body = [
     { x: 1.32, y: 0.06 }, { x: 1.0, y: -0.3 }, { x: 0.4, y: -0.5 },
@@ -275,7 +261,7 @@ export function drawShark(ctx, R, t, st = {}) {
   // pectoral fin
   ctx.save(); ctx.translate(0.45 * R, 0.42 * R); ctx.rotate(0.6);
   sketchShape(ctx, [{ x: 0, y: 0 }, { x: 0.5 * R, y: 0.3 * R }, { x: 0.1 * R, y: 0.5 * R }],
-    { fill: mixHex(P.shark, '#000', 0.1), lineW: 2, wobble: 1.7, key: 84 });
+    { fill: mixHex(col, '#000', 0.1), lineW: 2, wobble: 1.7, key: 84 });
   ctx.restore();
   // gill slits
   ctx.strokeStyle = rgba(P.ink, 0.4); ctx.lineWidth = 2;
@@ -737,4 +723,135 @@ function fan(R, hScale, up) {
   }
   pts.push({ x: R, y: 0 });
   return pts;
+}
+
+// ----------------------------------------- gore: cookiecutter bite + parasites
+// drawn already clipped to the body, so a circle near the edge reads as a
+// scooped-out "cookie" bite missing from the silhouette.
+function drawWound(ctx, R, w) {
+  const br = w.r * R;
+  const cx = Math.cos(w.a) * 0.66 * R, cy = Math.sin(w.a) * 0.52 * R;
+  ctx.fillStyle = rgba(P.bloodDark, 0.95);
+  ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.fill();
+  ctx.fillStyle = rgba('#5a160f', 0.95);
+  ctx.beginPath(); ctx.arc(cx, cy, br * 0.66, 0, TAU); ctx.fill();
+  ctx.strokeStyle = rgba(P.blood, 0.85); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.stroke();
+  ctx.fillStyle = rgba(P.blood, 0.5);
+  ctx.beginPath(); ctx.arc(cx, cy + br * 0.9, br * 0.3, 0, TAU); ctx.fill();
+}
+function drawParasites(ctx, R, n) {
+  for (let i = 0; i < Math.min(n, 6); i++) {
+    const a = hash1(i * 13 + 3) * TAU, x = Math.cos(a) * 0.6 * R, y = Math.sin(a) * 0.5 * R;
+    ctx.fillStyle = rgba('#7a5a38', 0.95);
+    ctx.beginPath(); ctx.ellipse(x, y, R * 0.07, R * 0.045, a, 0, TAU); ctx.fill();
+    ctx.strokeStyle = rgba('#2e2112', 0.8); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - Math.cos(a) * R * 0.09, y - Math.sin(a) * R * 0.09); ctx.stroke();
+  }
+}
+
+// ----------------------------------------------------------------- swordfish
+export function drawSwordfish(ctx, R, t, st = {}) {
+  const swim = Math.sin(t * 7) * 0.05;
+  const fill = ctx.createLinearGradient(0, -R * 0.5, 0, R * 0.5);
+  fill.addColorStop(0, '#5b7d9a'); fill.addColorStop(1, '#2f4a5e');
+  sketchShape(ctx, [{ x: -1.3 * R, y: 0 }, { x: -1.8 * R, y: -0.5 * R }, { x: -1.5 * R, y: 0 }, { x: -1.8 * R, y: 0.5 * R }], { fill: '#2f4a5e', lineW: 2, wobble: 1.8, key: 101 });
+  const body = [{ x: 1.0, y: 0 }, { x: 0.5, y: -0.32 }, { x: -0.4, y: -0.38 }, { x: -1.2, y: -0.18 + swim }, { x: -1.2, y: 0.18 }, { x: -0.4, y: 0.38 }, { x: 0.5, y: 0.32 }].map((p) => ({ x: p.x * R, y: p.y * R }));
+  sketchShape(ctx, body, { fill, lineW: 2.8, wobble: 1.7, key: 102 });
+  sketchShape(ctx, [{ x: -0.1 * R, y: -0.34 * R }, { x: 0.1 * R, y: -0.82 * R }, { x: 0.35 * R, y: -0.3 * R }], { fill: '#2f4a5e', lineW: 2, wobble: 1.6, key: 103 });
+  // the long sword bill
+  ctx.strokeStyle = '#9fb6c4'; ctx.lineWidth = R * 0.12; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0.9 * R, 0.02 * R); ctx.lineTo(2.0 * R, -0.02 * R); ctx.stroke();
+  ctx.fillStyle = P.foam; ctx.beginPath(); ctx.arc(0.68 * R, -0.12 * R, 0.08 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.69 * R, -0.12 * R, 0.04 * R, 0, TAU); ctx.fill();
+}
+
+// ------------------------------------------------------- cookiecutter shark
+export function drawCookiecutter(ctx, R, t, st = {}) {
+  const fill = ctx.createLinearGradient(0, -R, 0, R);
+  fill.addColorStop(0, '#3a4750'); fill.addColorStop(1, '#222c33');
+  sketchShape(ctx, [{ x: -1.4 * R, y: 0 }, { x: -1.7 * R, y: -0.3 * R }, { x: -1.5 * R, y: 0 }, { x: -1.7 * R, y: 0.3 * R }], { fill: '#222c33', lineW: 2, wobble: 1.6, key: 111 });
+  const body = [{ x: 1.2, y: 0 }, { x: 0.6, y: -0.4 }, { x: -0.4, y: -0.42 }, { x: -1.2, y: -0.2 }, { x: -1.2, y: 0.2 }, { x: -0.4, y: 0.42 }, { x: 0.6, y: 0.4 }].map((p) => ({ x: p.x * R, y: p.y * R }));
+  sketchShape(ctx, body, { fill, lineW: 2.4, wobble: 1.6, key: 112 });
+  ctx.fillStyle = rgba(P.bio, 0.45); ctx.beginPath(); ctx.ellipse(0.2 * R, 0.3 * R, 0.7 * R, 0.16 * R, 0, 0, TAU); ctx.fill();
+  // round suctorial cookie-cutter mouth, ringed with teeth
+  ctx.fillStyle = '#2a0c12'; ctx.beginPath(); ctx.arc(1.05 * R, 0.06 * R, 0.26 * R * (st.biting ? 1.1 : 1), 0, TAU); ctx.fill();
+  ctx.strokeStyle = P.foam; ctx.lineWidth = 1.4;
+  for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; ctx.beginPath(); ctx.moveTo(1.05 * R + Math.cos(a) * 0.18 * R, 0.06 * R + Math.sin(a) * 0.18 * R); ctx.lineTo(1.05 * R + Math.cos(a) * 0.27 * R, 0.06 * R + Math.sin(a) * 0.27 * R); ctx.stroke(); }
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.6 * R, -0.16 * R, 0.07 * R, 0, TAU); ctx.fill();
+}
+
+// ----------------------------------------------------------------- the orca
+export function drawOrca(ctx, R, t, st = {}) {
+  const mouth = st.mouth ?? 0; const swim = Math.sin(t * 3.5) * 0.04;
+  sketchShape(ctx, [{ x: -1.3 * R, y: 0 }, { x: -1.7 * R, y: -0.5 * R }, { x: -1.4 * R, y: 0 }, { x: -1.7 * R, y: 0.5 * R }], { fill: P.orca, lineW: 3, wobble: 2, key: 141 });
+  const body = [{ x: 1.25, y: 0.05 }, { x: 1.0, y: -0.34 }, { x: 0.4, y: -0.5 }, { x: -0.4, y: -0.48 }, { x: -1.05, y: -0.3 }, { x: -1.1, y: 0.06 + swim }, { x: -1.0, y: 0.4 }, { x: -0.3, y: 0.56 }, { x: 0.5, y: 0.52 }, { x: 1.05, y: 0.34 }].map((p) => ({ x: p.x * R, y: p.y * R }));
+  const fill = ctx.createLinearGradient(0, -R, 0, R);
+  fill.addColorStop(0, mixHex(P.orca, '#3a4654', 0.4)); fill.addColorStop(0.5, P.orca); fill.addColorStop(1, '#0c1218');
+  sketchShape(ctx, body, { fill, lineW: 3.4, wobble: 1.9, key: 142 });
+  sketchShape(ctx, [{ x: -0.05 * R, y: -0.5 * R }, { x: 0.05 * R + swim * R, y: -1.35 * R }, { x: 0.45 * R, y: -0.45 * R }], { fill: P.orca, lineW: 2.8, wobble: 2, key: 143 });
+  ctx.save(); ctx.beginPath(); sketchShape(ctx, body, { fill: null, outline: null }); ctx.clip();
+  ctx.fillStyle = '#eef3f4';
+  ctx.beginPath(); ctx.ellipse(0.1 * R, 0.55 * R, 0.9 * R, 0.4 * R, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0.78 * R, -0.12 * R, 0.22 * R, 0.14 * R, -0.2, 0, TAU); ctx.fill();   // eye patch
+  ctx.fillStyle = rgba('#cdd7da', 0.45); ctx.beginPath(); ctx.ellipse(-0.5 * R, -0.2 * R, 0.5 * R, 0.22 * R, 0.2, 0, TAU); ctx.fill(); // grey saddle
+  ctx.restore();
+  ctx.save(); ctx.translate(0.5 * R, 0.45 * R); ctx.rotate(0.6);
+  sketchShape(ctx, [{ x: 0, y: 0 }, { x: 0.55 * R, y: 0.3 * R }, { x: 0.1 * R, y: 0.5 * R }], { fill: '#10161c', lineW: 2, wobble: 1.7, key: 144 }); ctx.restore();
+  ctx.fillStyle = '#1f0a0e'; ctx.beginPath();
+  ctx.moveTo(0.75 * R, 0.16 * R); ctx.quadraticCurveTo(1.3 * R, 0.14 * R, 1.28 * R, 0.34 * R + mouth * 0.22 * R);
+  ctx.quadraticCurveTo(0.95 * R, 0.5 * R + mouth * 0.22 * R, 0.72 * R, 0.34 * R); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = P.foam; for (let i = 0; i < 6; i++) { const tx = (0.82 + i * 0.08) * R; ctx.beginPath(); ctx.moveTo(tx, 0.2 * R); ctx.lineTo(tx + 0.03 * R, 0.32 * R + mouth * 0.16 * R); ctx.lineTo(tx + 0.06 * R, 0.2 * R); ctx.fill(); }
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.78 * R, -0.08 * R, 0.05 * R, 0, TAU); ctx.fill();
+}
+
+// ------------------------------------------------------- parasitic copepod
+export function drawCopepod(ctx, R, t) {
+  ctx.fillStyle = '#a8895e'; ctx.strokeStyle = P.ink; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.62, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = rgba('#c8b07e', 0.9); ctx.beginPath(); ctx.ellipse(-R * 0.9, 0, R * 0.4, R * 0.3, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = P.ink; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(R * 0.6, -R * 0.2); ctx.lineTo(R * 1.3, -R * 0.5); ctx.moveTo(R * 0.6, R * 0.2); ctx.lineTo(R * 1.3, R * 0.5); ctx.stroke();
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(R * 0.4, 0, R * 0.18, 0, TAU); ctx.fill();
+}
+
+// ----------------------------------------------------------------- seagull
+export function drawSeagull(ctx, R, t, st = {}) {
+  const flap = Math.sin(t * 12) * 0.4;
+  sketchShape(ctx, [{ x: 0.9 * R, y: 0 }, { x: 0.2 * R, y: -0.3 * R }, { x: -0.8 * R, y: -0.15 * R }, { x: -1.0 * R, y: 0.1 * R }, { x: -0.6 * R, y: 0.25 * R }, { x: 0.3 * R, y: 0.25 * R }], { fill: '#f2f4f5', lineW: 2, wobble: 1.4, key: 151 });
+  ctx.strokeStyle = '#9aa6ac'; ctx.lineWidth = R * 0.16; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-0.1 * R, -0.1 * R); ctx.lineTo(-0.5 * R, (-0.7 - flap) * R); ctx.moveTo(-0.1 * R, -0.1 * R); ctx.lineTo(0.3 * R, (-0.55 + flap * 0.5) * R); ctx.stroke();
+  ctx.fillStyle = P.amber; ctx.beginPath(); ctx.moveTo(0.85 * R, -0.05 * R); ctx.lineTo(1.25 * R, 0.02 * R); ctx.lineTo(0.85 * R, 0.08 * R); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.6 * R, -0.05 * R, 0.06 * R, 0, TAU); ctx.fill();
+}
+
+// ----------------------------------------------- plastic bag (fake jellyfish)
+export function drawBag(ctx, R, t) {
+  const sway = Math.sin(t * 1.2) * 0.08;
+  const pts = [{ x: -0.9, y: -0.2 }, { x: -0.7, y: -0.7 }, { x: 0, y: -0.9 }, { x: 0.7, y: -0.7 }, { x: 0.9, y: -0.2 }, { x: 0.6, y: 0.2 }, { x: 0.85, y: 0.7 }, { x: 0.2, y: 0.5 }, { x: -0.2, y: 0.8 }, { x: -0.6, y: 0.5 }, { x: -0.85, y: 0.7 }].map((p) => ({ x: (p.x + sway) * R, y: p.y * R }));
+  sketchShape(ctx, pts, { fill: rgba(P.plastic, 0.45), lineW: 2, wobble: 2.6, key: 161 });
+  ctx.strokeStyle = rgba('#ffffff', 0.4); ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(-0.3 * R, -0.4 * R); ctx.lineTo(-0.1 * R, 0.3 * R); ctx.moveTo(0.2 * R, -0.5 * R); ctx.lineTo(0.3 * R, 0.2 * R); ctx.stroke();
+  ctx.strokeStyle = rgba(P.ink, 0.3); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(-0.3 * R, -0.72 * R, 0.12 * R, 0, Math.PI); ctx.arc(0.3 * R, -0.72 * R, 0.12 * R, 0, Math.PI); ctx.stroke();
+}
+
+// ---------------------------------------------------------- booster pickup
+export function drawBooster(ctx, R, t, type) {
+  const cols = { nurse: '#c2a875', swift: '#7fd0ff', shield: '#bfe9f0' };
+  const col = cols[type] || '#ffd97a';
+  wash(ctx, 0, 0, R * 1.9, col, 0.4 + 0.15 * Math.sin(t * 4));
+  ctx.fillStyle = rgba('#08202e', 0.7); ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill(); ctx.stroke();
+  if (type === 'nurse') {
+    sketchShape(ctx, [{ x: 0.7 * R, y: 0 }, { x: 0.1 * R, y: -0.25 * R }, { x: -0.5 * R, y: -0.2 * R }, { x: -0.7 * R, y: 0 }, { x: -0.5 * R, y: 0.2 * R }, { x: 0.1 * R, y: 0.25 * R }], { fill: col, lineW: 1.6, wobble: 1, key: 171 });
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-0.5 * R, 0); ctx.lineTo(-0.85 * R, -0.25 * R); ctx.lineTo(-0.85 * R, 0.25 * R); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.45 * R, -0.05 * R, 0.05 * R, 0, TAU); ctx.fill();
+  } else if (type === 'swift') {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-0.4 * R, -0.4 * R); ctx.lineTo(0.45 * R, 0); ctx.lineTo(-0.4 * R, 0.4 * R); ctx.lineTo(-0.15 * R, 0); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, R * 0.5, 0, TAU); ctx.stroke();
+    ctx.fillStyle = rgba(col, 0.3); ctx.fill();
+    ctx.fillStyle = rgba('#fff', 0.6); ctx.beginPath(); ctx.arc(-0.15 * R, -0.15 * R, 0.1 * R, 0, TAU); ctx.fill();
+  }
 }

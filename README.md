@@ -16,14 +16,27 @@ result, enable **GitHub Pages** on this branch — see below.
 
 
 > Drag with your finger (or mouse) and the slow, weighty fish follows with
-> smooth spring physics. Flick to dash. The crossing is **long** and spans nine
-> regions — dodge **rocks, coral, currents, sea urchins, mines, anchors and
-> baited hooks**, and outwit **seals, sharks, barracuda, anglerfish, pufferfish,
-> squid, jellyfish and fishing boats** (nets *catch* you, propellers *cut* you,
-> squid *grab* you). Region **checkpoints** let you revive; meta-upgrades make
-> the trek shorter and gentler. Reach the Spawning Ground, lay your eggs (the
-> lifetime tally keeps climbing), win. Then spend eggs on **loot-box clams** for
-> 16 collectible **skins**. Die — and try again, a little less useless each run.
+> smooth spring physics; ambient **waves** nudge you the whole way. Flick to
+> dash. The crossing is **long** and spans nine regions that get darker and
+> deadlier before the calm finale.
+>
+> **Hazards:** rocks, coral, **strong currents**, sea urchins, sea mines,
+> anchors, baited hooks, **fishing nets** (you bleed while tangled),
+> **boat propellers**, **jellyfish swarms** (sting *and* slow you), and
+> **plastic pollution** that looks like a jellyfish and *poisons* you.
+>
+> **Predators:** sea lions, **blue sharks**, **cookiecutter sharks** (they take a
+> round bite — you swim away *cut like a cookie*), **swordfish** (easy straight
+> lunges early on), barracuda, anglerfish, pufferfish, **squid** (they grab),
+> the rare boss-tier **orca**, and **parasitic copepods** that latch on and drain
+> you — surface and a **seagull** will dive down to pluck them off (you take the
+> peck). Every wind-up shows a red **attack-area** so you can read it and dodge.
+>
+> Grab **boosters** mid-run (Nurse Shark heal-over-time, Swift Current, Bubble
+> Shield). Region **checkpoints** let you revive. Reach the Spawning Ground, lay
+> your eggs (the lifetime tally climbs), win — then spend eggs on **loot-box
+> clams** for 16 collectible **skins**. Die, gorily, and try again a little less
+> useless each run.
 
 ## Play
 
