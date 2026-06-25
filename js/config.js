@@ -79,10 +79,10 @@ export const WAVE = { surge: 54, freq: 0.42, swirl: 0.0009, depthKeep: 0.32 };
 export const STATUS = {
   slowMul: 0.55, slowTime: 1.8,
   poisonTime: 6.5, poisonTick: 2.2, poisonDmg: 1,
-  parasiteDrainEach: 5.4,        // base seconds to lose 1 heart (÷ parasite count)
   healTick: 3.0, healTime: 16,   // Nurse Shark regen booster
   swiftMul: 1.5, swiftTime: 9,   // Swift Current booster
   shieldTime: 7,                 // Bubble Shield booster
+  woundSlowPer: 0.05, woundSlowMax: 0.42,  // each open wound drags you down
 };
 
 // ---- more predators --------------------------------------------------------

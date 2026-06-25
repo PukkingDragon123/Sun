@@ -44,10 +44,19 @@ export const STR = {
   boostGet: (n) => `${n}!`,
   statusSlow: 'slowed',
   statusPoison: 'poisoned',
-  statusParasite: (n) => `${n} parasite${n > 1 ? 's' : ''} — surface for a gull!`,
   statusHeal: 'mending',
   statusSwift: 'swift',
   statusShield: 'shielded',
+  statusWounded: 'wounded',
+
+  intro: {
+    egg: 'a single, hopeful egg…',
+    hatch: 'you hatch — small, soft, and clueless',
+    siblings: 'you and your sibling drift out together',
+    loss: 'the sea takes your sibling.\nyou swim on, alone.',
+    skip: 'tap to skip',
+  },
+  deathSink: 'down you go…',
 
   zoneEnter: (n) => n,
   checkpoint: (n) => `${n} — checkpoint reached`,

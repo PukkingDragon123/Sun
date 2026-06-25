@@ -129,16 +129,17 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     poisonTime: 6.5,
     poisonTick: 2.2,
     poisonDmg: 1,
-    parasiteDrainEach: 5.4,
-    // base seconds to lose 1 heart (÷ parasite count)
     healTick: 3,
     healTime: 16,
     // Nurse Shark regen booster
     swiftMul: 1.5,
     swiftTime: 9,
     // Swift Current booster
-    shieldTime: 7
+    shieldTime: 7,
     // Bubble Shield booster
+    woundSlowPer: 0.05,
+    woundSlowMax: 0.42
+    // each open wound drags you down
   };
   var SWORDFISH = { detectRange: 360, cruise: 62, windup: 0.7, lungeSpeed: 600, lungeDur: 0.5, rest: 1.7, damage: 1, reach: 540 };
   var COOKIE = { detectRange: 430, cruise: 150, windup: 0.34, dartSpeed: 720, dartDur: 0.26, rest: 0.95, damage: 1, reach: 300 };
@@ -577,7 +578,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     if (!padNodes) return;
     melodyTimer -= dt;
     if (melodyTimer <= 0) {
-      melodyTimer = 1.6 + Math.random() * 2.2;
+      melodyTimer = 2.6 + Math.random() * 3.2;
       melodyStep++;
       if (Math.random() < 0.82) {
         const f = SCALE[Math.floor(Math.random() * SCALE.length)] * (Math.random() < 0.3 ? 0.5 : 1);
@@ -1662,111 +1663,54 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ctx3.quadraticCurveTo(0.7 * R, 0.6 * R, 0.6 * R, 0.1 * R);
     ctx3.stroke();
   }
-  function drawRock(ctx3, R, seed) {
-    const n = 2 + Math.floor(hash1(seed) * 2);
-    for (let i = 0; i < n; i++) {
-      const ox = (hash1(seed + i * 9) - 0.5) * R * 0.9;
-      const oy = (1 - hash1(seed + i * 5) * 0.4) * R * 0.32;
-      const rr = R * (0.55 + hash1(seed + i * 7) * 0.5);
-      const top = mixHex("#9fb0bb", "#c2cdd3", hash1(seed + i));
-      const bot = mixHex("#41535e", "#5a6f7b", hash1(seed + i * 2));
-      const g = ctx3.createLinearGradient(ox, oy - rr, ox, oy + rr);
-      g.addColorStop(0, top);
-      g.addColorStop(1, bot);
-      const shape = blobPts(ox, oy, rr, rr * 0.74, 8, 0.2, seed + i * 31);
-      sketchShape(ctx3, shape, { fill: g, lineW: 2.4, wobble: 1.4, key: seed + i * 13 });
-      ctx3.save();
-      ctx3.beginPath();
-      sketchShape(ctx3, shape, { fill: null, outline: null });
-      ctx3.clip();
-      ctx3.strokeStyle = rgba("#2c3940", 0.22);
-      ctx3.lineWidth = 2;
-      for (let s = 0; s < 3; s++) {
-        const yy = oy - rr * 0.34 + s * rr * 0.32;
-        ctx3.beginPath();
-        ctx3.moveTo(ox - rr, yy + (hash1(seed + s) - 0.5) * 10);
-        ctx3.quadraticCurveTo(ox, yy - 6, ox + rr, yy + (hash1(seed + s * 2) - 0.5) * 10);
-        ctx3.stroke();
-      }
-      ctx3.fillStyle = rgba("#5f8a5a", 0.5);
-      for (let m = 0; m < 6; m++) {
-        const a = -Math.PI / 2 + (hash1(seed + m * 3) - 0.5) * 1.7;
-        ctx3.beginPath();
-        ctx3.arc(ox + Math.cos(a) * rr * 0.72, oy + Math.sin(a) * rr * 0.55, rr * (0.07 + hash1(seed + m) * 0.05), 0, TAU);
-        ctx3.fill();
-      }
-      ctx3.restore();
-      ctx3.fillStyle = rgba("#ffffff", 0.12);
-      ctx3.beginPath();
-      ctx3.ellipse(ox - rr * 0.25, oy - rr * 0.5, rr * 0.4, rr * 0.16, -0.3, 0, TAU);
-      ctx3.fill();
-    }
-  }
-  function drawCoral(ctx3, R, seed) {
-    const hue = ["#e08a5a", "#d96f8f", "#e0b35a", "#7fb0c9"][Math.floor(hash1(seed) * 4)];
-    const branches = 3 + Math.floor(hash1(seed + 2) * 3);
-    for (let b = 0; b < branches; b++) {
-      const a = -Math.PI / 2 + (b / (branches - 1) - 0.5) * 1.6;
-      const len = R * (0.8 + hash1(seed + b * 5) * 0.7);
-      ctx3.strokeStyle = mixHex(hue, PALETTE.ink, 0.2);
-      ctx3.lineWidth = R * 0.22;
-      ctx3.lineCap = "round";
-      const ex = Math.cos(a) * len, ey = Math.sin(a) * len;
-      ctx3.beginPath();
-      ctx3.moveTo(0, 0);
-      ctx3.quadraticCurveTo(ex * 0.4 + hash1(seed + b) * 8, ey * 0.6, ex, ey);
-      ctx3.stroke();
-      ctx3.fillStyle = rgba(hue, 0.95);
-      ctx3.beginPath();
-      ctx3.arc(ex, ey, R * 0.16, 0, TAU);
-      ctx3.fill();
-      for (let k = 0; k < 3; k++) {
-        ctx3.fillStyle = rgba("#fff", 0.25);
-        ctx3.beginPath();
-        ctx3.arc(ex * (0.4 + k * 0.2), ey * (0.4 + k * 0.2), R * 0.06, 0, TAU);
-        ctx3.fill();
-      }
-    }
-  }
-  function drawKelp(ctx3, H, t, seed, flow = 0) {
-    const segs = 9;
+  function drawKelp(ctx3, H, t, seed, flow = 0, push = 0) {
+    const segs = 11;
     const own = 0.6 + hash1(seed) * 0.5;
+    const lean = (hash1(seed + 3) - 0.5) * 0.3;
     const pts = [];
     for (let i = 0; i <= segs; i++) {
       const f = i / segs;
-      const bend = (flow * 0.7 + Math.sin(t * own + seed + f * 2.2) * 0.5) * f * f;
-      pts.push({ x: bend * 0.34 * H, y: -f * H });
+      const bend = (flow * 0.6 + Math.sin(t * own + seed + f * 2.4) * 0.45 + push * 1.5 + lean) * f * f;
+      pts.push({ x: bend * 0.36 * H, y: -f * H });
     }
+    const draw = (wid, style) => {
+      ctx3.strokeStyle = style;
+      ctx3.lineWidth = wid;
+      ctx3.lineCap = "round";
+      ctx3.lineJoin = "round";
+      ctx3.beginPath();
+      ctx3.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        ctx3.quadraticCurveTo(a.x, (a.y + b.y) / 2, b.x, b.y);
+      }
+      ctx3.stroke();
+    };
     const grad = ctx3.createLinearGradient(0, 0, 0, -H);
-    grad.addColorStop(0, mixHex("#2f5d3a", PALETTE.ink, 0.3));
-    grad.addColorStop(1, "#5aa06a");
-    ctx3.strokeStyle = grad;
-    ctx3.lineCap = "round";
-    ctx3.lineJoin = "round";
-    ctx3.lineWidth = 7;
-    ctx3.beginPath();
-    ctx3.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      ctx3.quadraticCurveTo(a.x, (a.y + b.y) / 2, b.x, b.y);
-    }
-    ctx3.stroke();
+    grad.addColorStop(0, mixHex("#2f5d3a", PALETTE.ink, 0.35));
+    grad.addColorStop(1, "#62ab72");
+    draw(8, grad);
+    draw(3, rgba("#a6e0a8", 0.45));
     for (let i = 2; i < pts.length; i++) {
       const p = pts[i], side = i % 2 ? 1 : -1;
+      const ang = side * 0.6 + (flow + push) * 0.4 + Math.sin(t * own + i) * 0.1;
+      const ln = (0.16 + hash1(seed + i) * 0.1) * H;
       ctx3.save();
       ctx3.translate(p.x, p.y);
-      ctx3.rotate(side * 0.5 + flow * 0.3);
-      ctx3.fillStyle = rgba(mixHex("#4f8255", "#7fc98a", hash1(seed + i)), 0.9);
+      ctx3.rotate(ang);
+      ctx3.fillStyle = rgba(mixHex("#4f8255", "#86d390", hash1(seed + i)), 0.92);
       ctx3.beginPath();
-      ctx3.ellipse(side * 0.14 * H, 0, 0.2 * H, 0.045 * H, 0, 0, TAU);
+      ctx3.moveTo(0, 0);
+      ctx3.quadraticCurveTo(side * ln * 0.5, -0.05 * H, side * ln, 0);
+      ctx3.quadraticCurveTo(side * ln * 0.5, 0.05 * H, 0, 0);
       ctx3.fill();
       ctx3.restore();
     }
-    ctx3.fillStyle = rgba("#9ed6a0", 0.9);
+    ctx3.fillStyle = rgba("#bfe9a0", 0.9);
     for (let i = pts.length - 3; i < pts.length; i++) {
       const p = pts[i];
       ctx3.beginPath();
-      ctx3.arc(p.x, p.y, 0.03 * H, 0, TAU);
+      ctx3.arc(p.x, p.y, 0.028 * H, 0, TAU);
       ctx3.fill();
     }
   }
@@ -1881,45 +1825,25 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     return pts;
   }
   function drawWound(ctx3, R, w) {
-    const cx = Math.cos(w.a) * 0.66 * R, cy = Math.sin(w.a) * 0.52 * R;
-    if (w.cut) {
-      const len = (0.3 + w.r) * R, ang = w.a + 1.2;
-      const dx = Math.cos(ang) * len * 0.5, dy = Math.sin(ang) * len * 0.5;
-      ctx3.strokeStyle = rgba("#5a160f", 0.95);
-      ctx3.lineWidth = R * 0.07;
-      ctx3.lineCap = "round";
-      ctx3.beginPath();
-      ctx3.moveTo(cx - dx, cy - dy);
-      ctx3.lineTo(cx + dx, cy + dy);
-      ctx3.stroke();
-      ctx3.strokeStyle = rgba(PALETTE.blood, 0.8);
-      ctx3.lineWidth = R * 0.03;
-      ctx3.beginPath();
-      ctx3.moveTo(cx - dx, cy - dy);
-      ctx3.lineTo(cx + dx, cy + dy);
-      ctx3.stroke();
-    } else {
-      const br = w.r * R;
-      ctx3.fillStyle = rgba(PALETTE.bloodDark, 0.95);
-      ctx3.beginPath();
-      ctx3.arc(cx, cy, br, 0, TAU);
-      ctx3.fill();
-      ctx3.fillStyle = rgba("#5a160f", 0.95);
-      ctx3.beginPath();
-      ctx3.arc(cx, cy, br * 0.66, 0, TAU);
-      ctx3.fill();
-      ctx3.strokeStyle = rgba(PALETTE.blood, 0.85);
-      ctx3.lineWidth = 2;
-      ctx3.beginPath();
-      ctx3.arc(cx, cy, br, 0, TAU);
-      ctx3.stroke();
-    }
-    ctx3.strokeStyle = rgba(PALETTE.blood, 0.45);
-    ctx3.lineWidth = R * 0.035;
+    const cx = Math.cos(w.a) * 0.7 * R, cy = Math.sin(w.a) * 0.55 * R;
+    const rad = ((w.cut ? 0.18 : 0.26) + w.r) * R;
+    const blob = blobPts(cx, cy, rad, rad * 0.82, 9, 0.42, w.a * 97 | 0);
+    ctx3.save();
+    ctx3.globalCompositeOperation = "destination-out";
+    sketchShape(ctx3, blob, { fill: "#000", outline: null, wobble: 1.2, key: w.a * 53 | 0 });
+    ctx3.restore();
+    sketchShape(ctx3, blob, { fill: null, outline: rgba("#3a0d08", 0.95), lineW: R * 0.06, wobble: 1.4, key: w.a * 53 | 0 });
+    sketchShape(
+      ctx3,
+      blobPts(cx, cy, rad * 0.82, rad * 0.66, 8, 0.4, w.a * 31 | 0),
+      { fill: null, outline: rgba(PALETTE.blood, 0.6), lineW: R * 0.035, wobble: 1.6, key: w.a * 17 | 0 }
+    );
+    ctx3.strokeStyle = rgba(PALETTE.blood, 0.5);
+    ctx3.lineWidth = R * 0.045;
     ctx3.lineCap = "round";
     ctx3.beginPath();
-    ctx3.moveTo(cx, cy);
-    ctx3.quadraticCurveTo(cx + R * 0.03, cy + R * 0.18, cx - R * 0.02, cy + R * 0.34);
+    ctx3.moveTo(cx, cy + rad * 0.5);
+    ctx3.quadraticCurveTo(cx + R * 0.03, cy + R * 0.3, cx - R * 0.02, cy + R * 0.52);
     ctx3.stroke();
   }
   function drawParasites(ctx3, R, n) {
@@ -2110,30 +2034,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ctx3.fillStyle = PALETTE.ink;
     ctx3.beginPath();
     ctx3.arc(R * 0.4, 0, R * 0.18, 0, TAU);
-    ctx3.fill();
-  }
-  function drawSeagull(ctx3, R, t, st = {}) {
-    const flap = Math.sin(t * 12) * 0.4;
-    sketchShape(ctx3, [{ x: 0.9 * R, y: 0 }, { x: 0.2 * R, y: -0.3 * R }, { x: -0.8 * R, y: -0.15 * R }, { x: -1 * R, y: 0.1 * R }, { x: -0.6 * R, y: 0.25 * R }, { x: 0.3 * R, y: 0.25 * R }], { fill: "#f2f4f5", lineW: 2, wobble: 1.4, key: 151 });
-    ctx3.strokeStyle = "#9aa6ac";
-    ctx3.lineWidth = R * 0.16;
-    ctx3.lineCap = "round";
-    ctx3.beginPath();
-    ctx3.moveTo(-0.1 * R, -0.1 * R);
-    ctx3.lineTo(-0.5 * R, (-0.7 - flap) * R);
-    ctx3.moveTo(-0.1 * R, -0.1 * R);
-    ctx3.lineTo(0.3 * R, (-0.55 + flap * 0.5) * R);
-    ctx3.stroke();
-    ctx3.fillStyle = PALETTE.amber;
-    ctx3.beginPath();
-    ctx3.moveTo(0.85 * R, -0.05 * R);
-    ctx3.lineTo(1.25 * R, 0.02 * R);
-    ctx3.lineTo(0.85 * R, 0.08 * R);
-    ctx3.closePath();
-    ctx3.fill();
-    ctx3.fillStyle = PALETTE.ink;
-    ctx3.beginPath();
-    ctx3.arc(0.6 * R, -0.05 * R, 0.06 * R, 0, TAU);
     ctx3.fill();
   }
   function drawBag(ctx3, R, t) {
@@ -2427,37 +2327,41 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     drawAmbient(ctx3, view2, t, light) {
       const { w, h, scale, camX } = view2;
       ctx3.save();
-      ctx3.globalAlpha = 0.18 + light * 0.12;
-      ctx3.fillStyle = mixHex(PALETTE.deepNavy, "#000", 0.35);
-      for (let i = 0; i < 2; i++) {
-        const span = w + 1200;
-        let bx = ((i * 780 - camX * 0.16 + t * 9) % span + span) % span - 220;
-        const by = h * (0.52 + 0.16 * Math.sin(t * 0.07 + i * 2.3));
-        const R = (72 + i * 26) * scale;
-        ctx3.save();
-        ctx3.translate(bx, by);
-        ctx3.scale(-1, 1);
-        drawWhale(ctx3, R, t + i * 3);
-        ctx3.restore();
-      }
-      ctx3.restore();
+      ctx3.globalAlpha = 0.1 + light * 0.07;
+      ctx3.fillStyle = mixHex(PALETTE.deepNavy, "#000", 0.4);
+      const wspan = w + 2600;
+      const wx = ((-camX * 0.13 + t * 7) % wspan + wspan) % wspan - 320;
+      const wy = h * (0.58 + 0.1 * Math.sin(t * 0.05));
       ctx3.save();
-      ctx3.globalAlpha = 0.3 + light * 0.2;
-      ctx3.fillStyle = mixHex(PALETTE.deepNavy, PALETTE.surfaceTeal, 0.5);
-      const span2 = w + 760;
-      const sx = ((-camX * 0.32 - t * 24) % span2 + span2) % span2 - 80;
-      const sy0 = h * (0.4 + 0.12 * Math.sin(t * 0.25));
-      for (let i = 0; i < 16; i++) {
-        const col = i % 6, row = i / 6 | 0;
-        const fx = sx + col * 26 * scale + row * 10 * scale;
-        const fy = sy0 + row * 18 * scale + Math.sin(t * 3 + i * 0.7) * 5 * scale;
+      ctx3.translate(wx, wy);
+      ctx3.scale(-1, 1);
+      drawWhale(ctx3, 82 * scale, t);
+      ctx3.restore();
+      ctx3.restore();
+      const schools = [
+        { mix: 0.5, par: 0.32, spd: 24, y: 0.34, n: 16, r: 10, a: 0.32 },
+        { mix: 0.4, par: 0.52, spd: 40, y: 0.62, n: 12, r: 8, a: 0.26 },
+        { mix: 0.62, par: 0.22, spd: 15, y: 0.47, n: 22, r: 13, a: 0.4 }
+      ];
+      for (let s = 0; s < schools.length; s++) {
+        const sc = schools[s], span = w + 760;
+        const sx = ((-camX * sc.par - t * sc.spd + s * 430) % span + span) % span - 110;
+        const sy0 = h * (sc.y + 0.07 * Math.sin(t * 0.2 + s));
         ctx3.save();
-        ctx3.translate(fx, fy);
-        ctx3.scale(-1, 1);
-        drawTuna(ctx3, 11 * scale, t, i * 1.3);
+        ctx3.globalAlpha = sc.a * (0.55 + light * 0.45);
+        ctx3.fillStyle = mixHex(PALETTE.deepNavy, PALETTE.surfaceTeal, sc.mix);
+        for (let i = 0; i < sc.n; i++) {
+          const col = i % 6, row = i / 6 | 0;
+          const fx = sx + col * 24 * scale + row * 10 * scale;
+          const fy = sy0 + row * 16 * scale + Math.sin(t * 3 + i * 0.7 + s) * 5 * scale;
+          ctx3.save();
+          ctx3.translate(fx, fy);
+          ctx3.scale(-1, 1);
+          drawTuna(ctx3, sc.r * scale, t, i * 1.3 + s);
+          ctx3.restore();
+        }
         ctx3.restore();
       }
-      ctx3.restore();
     }
     // a flowing current band (wavy streamlines + carried motes); WORLD space.
     drawCurrent(ctx3, c, t) {
@@ -2634,13 +2538,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           this.tickDamage(STATUS.poisonDmg, particles);
         }
       }
-      if (this.parasites > 0) {
-        this.paraT -= dt;
-        if (this.paraT <= 0) {
-          this.paraT = STATUS.parasiteDrainEach / this.parasites;
-          this.tickDamage(1, particles);
-        }
-      }
       if (this.captured) {
         this.mouth = 0;
         this._animate(dt, 0.4);
@@ -2648,8 +2545,9 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       }
       const slowF = this.slow > 0 ? STATUS.slowMul : 1;
       const swiftF = this.swift > 0 ? STATUS.swiftMul : 1;
-      const effSpeed = this.speed * slowF * swiftF;
-      const effFreq = this.freq * (this.slow > 0 ? 0.72 : 1);
+      const woundMul = clamp(1 - this.wounds.length * STATUS.woundSlowPer, 1 - STATUS.woundSlowMax, 1);
+      const effSpeed = this.speed * slowF * swiftF * woundMul;
+      const effFreq = this.freq * (this.slow > 0 ? 0.72 : 1) * (0.8 + 0.2 * woundMul);
       const steering = target && target.active && this.stun <= 0;
       if (steering) {
         const f = effFreq;
@@ -3327,45 +3225,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.restore();
     }
   };
-  var Seagull = class {
-    constructor(x, y) {
-      this.x = x;
-      this.y = WATER.surfaceBand - 70;
-      this.vx = 0;
-      this.vy = 0;
-      this.state = "dive";
-      this.t = 0;
-      this.done = false;
-      this.face = 1;
-      this.target = { x, y };
-    }
-    update(dt, env2) {
-      this.t += dt;
-      const p = env2.player;
-      if (this.state === "dive") {
-        const tx = p.alive ? p.x : this.target.x, ty = p.alive ? p.y : this.target.y;
-        const a = Math.atan2(ty - this.y, tx - this.x);
-        this.vx = Math.cos(a) * SEAGULL.diveSpeed;
-        this.vy = Math.sin(a) * SEAGULL.diveSpeed;
-        this.face = this.vx < 0 ? -1 : 1;
-        if (this.t > 2.6) this.state = "leave";
-      } else {
-        this.vy = -SEAGULL.diveSpeed * 0.8;
-        this.vx = this.face * 120;
-        if (this.y < WATER.surfaceBand - 90) this.done = true;
-      }
-      this.x += this.vx * dt;
-      this.y += this.vy * dt;
-    }
-    render(ctx3, t) {
-      ctx3.save();
-      ctx3.translate(this.x, this.y);
-      ctx3.scale(this.face, 1);
-      ctx3.rotate(Math.atan2(this.vy, Math.abs(this.vx) + 1) * 0.5);
-      drawSeagull(ctx3, 26, t, { diving: this.state === "dive" });
-      ctx3.restore();
-    }
-  };
   var Puffer = class {
     constructor(x, y) {
       this.x = x;
@@ -3668,40 +3527,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.restore();
     }
   };
-  var Rock = class {
-    constructor(x, y, r, seed) {
-      this.x = x;
-      this.y = y;
-      this.r = r;
-      this.seed = seed;
-    }
-    get hitR() {
-      return this.r * 0.7;
-    }
-    render(ctx3) {
-      ctx3.save();
-      ctx3.translate(this.x, this.y);
-      drawRock(ctx3, this.r, this.seed);
-      ctx3.restore();
-    }
-  };
-  var Coral = class {
-    constructor(x, y, r, seed) {
-      this.x = x;
-      this.y = y;
-      this.r = r;
-      this.seed = seed;
-    }
-    get hitR() {
-      return this.r * 0.62;
-    }
-    render(ctx3) {
-      ctx3.save();
-      ctx3.translate(this.x, this.y);
-      drawCoral(ctx3, this.r, this.seed);
-      ctx3.restore();
-    }
-  };
   var Anchor = class {
     constructor(x, y, r) {
       this.x = x;
@@ -3919,12 +3744,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   function zoneStartX(idx) {
     return idx <= 0 ? 0 : WORLD.zones[idx - 1].end * WORLD.goalDistance;
   }
-  function rockAt(x, rng, r0 = 42, r1 = 92) {
-    const r = rng.range(r0, r1);
-    const onFloor = rng.chance(0.7);
-    const y = onFloor ? REF_H - WATER.seabedBand - r * 0.3 : rng.range(REF_H * 0.32, REF_H - WATER.seabedBand - r);
-    return new Rock(x, y, r, Math.floor(rng() * 1e6));
-  }
   function currentAt(x, rng, strong = false) {
     const w = rng.range(340, 660);
     const top = rng.range(WATER.surfaceBand + 30, REF_H * 0.5);
@@ -3939,58 +3758,55 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   function generateWorld(seed) {
     const rng = makeRng(seed >>> 0);
     const G = WORLD.goalDistance;
-    const rocks = [], corals = [], anchors = [], urchins = [], mines = [], hooks = [];
-    const bags = [], boosters = [];
+    const rocks = [], corals = [];
+    const anchors = [], urchins = [], mines = [], hooks = [], bags = [], boosters = [];
     const plankton = [], kelp = [], currents = [], spawners = [];
     const boosterType = () => rng.pick(["nurse", "nurse", "nurse", "swift", "shield"]);
     const dropBooster = (x2) => boosters.push(new Booster(x2, colY(rng, 90), boosterType()));
-    for (let x2 = 160; x2 < G; x2 += rng.range(220, 440)) {
+    for (let x2 = 140; x2 < G; x2 += rng.range(150, 320)) {
       const z = zoneAt(x2).id;
-      const p = z === "kelp" ? 0.95 : z === "shallows" || z === "bloom" ? 0.6 : 0.35;
-      if (rng.chance(p)) kelp.push(new Kelp(x2 + rng.range(-30, 30), rng.range(120, 300), Math.floor(rng() * 1e6)));
+      const p = z === "kelp" ? 0.96 : z === "shallows" || z === "bloom" || z === "spawn" ? 0.7 : 0.42;
+      if (rng.chance(p)) {
+        const clump = rng.int(1, z === "kelp" ? 4 : 2);
+        for (let k = 0; k < clump; k++) kelp.push(new Kelp(x2 + rng.range(-24, 24), rng.range(130, 320), Math.floor(rng() * 1e6)));
+      }
     }
     let x = 720;
     while (x < G - 720) {
       const z = zoneAt(x).id;
-      const foodP = z === "twilight" || z === "trench" ? 0.5 : z === "spawn" ? 1 : 0.82;
+      const foodP = z === "twilight" || z === "trench" ? 0.5 : z === "spawn" ? 1 : 0.85;
       if (rng.chance(foodP)) plankton.push(new Plankton(x + rng.range(-40, 40), colY(rng, 80), rng.chance(0.14)));
       if (rng.chance(0.07)) dropBooster(x);
       switch (z) {
         case "shallows":
           if (rng.chance(0.4)) spawners.push({ x, type: "swordfish", y: colY(rng, 120) });
-          if (rng.chance(0.45)) rocks.push(rockAt(x, rng, 40, 78));
-          if (rng.chance(0.25)) corals.push(new Coral(x + rng.range(-30, 30), floorY(rng, 10), rng.range(38, 64), Math.floor(rng() * 1e6)));
           break;
         case "kelp":
-          if (rng.chance(0.4)) spawners.push({ x, type: "swordfish", y: colY(rng, 120) });
-          if (rng.chance(0.45)) urchins.push(new Urchin(x, floorY(rng, 6), rng.range(22, 34), Math.floor(rng() * 1e6)));
-          if (rng.chance(0.4)) corals.push(new Coral(x + rng.range(-30, 30), floorY(rng, 8), rng.range(40, 70), Math.floor(rng() * 1e6)));
-          if (rng.chance(0.3)) spawners.push({ x, type: "barracuda", y: colY(rng, 120) });
+          if (rng.chance(0.42)) urchins.push(new Urchin(x, floorY(rng, 6), rng.range(22, 34), Math.floor(rng() * 1e6)));
+          if (rng.chance(0.42)) spawners.push({ x, type: "swordfish", y: colY(rng, 120) });
+          if (rng.chance(0.32)) spawners.push({ x, type: "barracuda", y: colY(rng, 120) });
           break;
         case "drift":
           if (rng.chance(0.5)) currents.push(currentAt(x, rng, rng.chance(0.3)));
-          if (rng.chance(0.35)) rocks.push(rockAt(x, rng));
-          if (rng.chance(0.4)) spawners.push({ x: x + rng.range(20, 120), type: "jelly", y: colY(rng, 90) });
-          if (rng.chance(0.3)) spawners.push({ x, type: "barracuda", y: colY(rng, 120) });
+          if (rng.chance(0.42)) spawners.push({ x: x + rng.range(20, 120), type: "jelly", y: colY(rng, 90) });
+          if (rng.chance(0.32)) spawners.push({ x, type: "barracuda", y: colY(rng, 120) });
           if (rng.chance(0.28)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 90)));
           break;
         case "bloom":
           for (let k = 0, n = rng.int(2, 5); k < n; k++) spawners.push({ x: x + rng.range(-70, 130), type: "jelly", y: colY(rng, 70) });
           if (rng.chance(0.5)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 80)));
-          if (rng.chance(0.35)) spawners.push({ x, type: "puffer", y: colY(rng, 110) });
-          if (rng.chance(0.3)) spawners.push({ x, type: "copepod", y: colY(rng, 90) });
+          if (rng.chance(0.38)) spawners.push({ x, type: "puffer", y: colY(rng, 110) });
           if (rng.chance(0.25)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 90)));
           break;
         case "deep":
           if (rng.chance(0.45)) currents.push(currentAt(x, rng, rng.chance(0.5)));
-          if (rng.chance(0.35)) spawners.push({ x, type: "seal", y: colY(rng, 130) });
-          if (rng.chance(0.4)) spawners.push({ x, type: "shark", y: colY(rng, 140) });
-          if (rng.chance(0.3)) spawners.push({ x, type: "cookiecutter", y: colY(rng, 120) });
-          if (rng.chance(0.25)) spawners.push({ x, type: "copepod", y: colY(rng, 100) });
+          if (rng.chance(0.4)) spawners.push({ x, type: "seal", y: colY(rng, 130) });
+          if (rng.chance(0.42)) spawners.push({ x, type: "shark", y: colY(rng, 140) });
+          if (rng.chance(0.32)) spawners.push({ x, type: "cookiecutter", y: colY(rng, 120) });
           if (rng.chance(0.08)) spawners.push({ x, type: "orca", y: colY(rng, 170) });
           break;
         case "twilight":
-          if (rng.chance(0.5)) spawners.push({ x, type: "angler", y: colY(rng, 150) });
+          if (rng.chance(0.52)) spawners.push({ x, type: "angler", y: colY(rng, 150) });
           if (rng.chance(0.35)) spawners.push({ x, type: "cookiecutter", y: colY(rng, 130) });
           if (rng.chance(0.3)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 100)));
           if (rng.chance(0.25)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 100)));
@@ -4000,11 +3816,11 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           if (rng.chance(0.45)) hooks.push(new Hook(x + rng.range(-40, 40), rng.range(REF_H * 0.28, REF_H * 0.6)));
           if (rng.chance(0.4)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 90)));
           if (rng.chance(0.3)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 90)));
-          if (rng.chance(0.3)) anchors.push(new Anchor(x + rng.range(-20, 20), floorY(rng, 30), rng.range(54, 78)));
+          if (rng.chance(0.28)) anchors.push(new Anchor(x + rng.range(-20, 20), floorY(rng, 30), rng.range(54, 78)));
           if (rng.chance(0.3)) spawners.push({ x, type: "shark", y: colY(rng, 140) });
           break;
         case "trench":
-          if (rng.chance(0.45)) spawners.push({ x, type: "squid", y: colY(rng, 150) });
+          if (rng.chance(0.46)) spawners.push({ x, type: "squid", y: colY(rng, 150) });
           if (rng.chance(0.3)) spawners.push({ x, type: "angler", y: colY(rng, 150) });
           if (rng.chance(0.3)) spawners.push({ x, type: "cookiecutter", y: colY(rng, 130) });
           if (rng.chance(0.1)) spawners.push({ x, type: "orca", y: colY(rng, 170) });
@@ -4013,8 +3829,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         default:
           plankton.push(new Plankton(x, colY(rng, 70), rng.chance(0.35)));
           if (rng.chance(0.4)) plankton.push(new Plankton(x + rng.range(60, 160), colY(rng, 70), false));
-          if (rng.chance(0.2)) dropBooster(x);
-          if (rng.chance(0.3)) corals.push(new Coral(x, floorY(rng, 8), rng.range(40, 64), Math.floor(rng() * 1e6)));
+          if (rng.chance(0.22)) dropBooster(x);
       }
       x += rng.range(280, 500);
     }
@@ -4062,10 +3877,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     boostGet: (n) => `${n}!`,
     statusSlow: "slowed",
     statusPoison: "poisoned",
-    statusParasite: (n) => `${n} parasite${n > 1 ? "s" : ""} \u2014 surface for a gull!`,
     statusHeal: "mending",
     statusSwift: "swift",
     statusShield: "shielded",
+    statusWounded: "wounded",
+    intro: {
+      egg: "a single, hopeful egg\u2026",
+      hatch: "you hatch \u2014 small, soft, and clueless",
+      siblings: "you and your sibling drift out together",
+      loss: "the sea takes your sibling.\nyou swim on, alone.",
+      skip: "tap to skip"
+    },
+    deathSink: "down you go\u2026",
     zoneEnter: (n) => n,
     checkpoint: (n) => `${n} \u2014 checkpoint reached`,
     win: "YOU MADE IT.",
@@ -4235,7 +4058,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         wind: u.wind || 0
       };
     }
-    startRun() {
+    startRun(intro = false) {
       this.seed = Math.floor(Math.random() * 2147483647) >>> 0;
       this.world = generateWorld(this.seed);
       const st = this.stats();
@@ -4251,7 +4074,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.runHits = 0;
       this.runBanked = false;
       this.usedWind = false;
-      this.gullTimer = SEAGULL.interval;
       this.netDrainT = 0;
       const sp = this.world.spawners;
       while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
@@ -4259,9 +4081,16 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.checkpointX = sx;
       this.checkpointRegionIdx = this.regionIdx;
       this.recenterCamera();
+      this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
+      if (intro && hs === 0) {
+        this.state = "intro";
+        this.introT = 0;
+        Audio.music(true);
+      } else this.beginPlay();
+    }
+    beginPlay() {
       this.state = "play";
       this.banner = { text: WORLD.zones[this.regionIdx].name, life: 2.6 };
-      this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
       Audio.music(true);
       Audio.sea(true);
     }
@@ -4282,6 +4111,14 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         if (this.banner.life <= 0) this.banner = null;
       }
       this.particles.update(dt);
+      if (this.state === "intro") {
+        this.updateIntro(dt);
+        return;
+      }
+      if (this.state === "dying") {
+        this.updateDying(dt);
+        return;
+      }
       if (this.state === "menu" || this.state === "shop" || this.state === "wardrobe" || this.state === "loot") {
         this.updateUI(dt);
         return;
@@ -4326,15 +4163,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       for (const c of this.copepods) c.update(dt, env2);
       for (const b of this.boats) b.update(dt);
       for (const j of this.jellies) j.update(dt);
-      if (this.state === "play" && pl.parasites > 0) {
-        this.gullTimer -= dt;
-        if (this.gullTimer <= 0 && this.seagulls.length === 0) {
-          this.seagulls.push(new Seagull(pl.x + (Math.random() - 0.5) * 120));
-          this.gullTimer = SEAGULL.interval;
-        }
-      }
-      for (const g of this.seagulls) g.update(dt, env2);
-      this.seagulls = this.seagulls.filter((g) => !g.done);
       const L = this.camX - 500, Rr = this.camX + this.view.worldViewW + 600;
       for (const m of this.world.mines) if (m.x > L && m.x < Rr) m.update(dt);
       for (const h of this.world.hooks) if (h.x > L && h.x < Rr) h.update(dt);
@@ -4529,31 +4357,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           pl.hit(PLASTIC.damage, (pl.x - b.x) * 1.2, (pl.y - b.y) * 1.2, Audio, this.particles);
         }
       }
-      for (const c of this.copepods) {
-        if (c.dead || c.x < L || c.x > Rr) continue;
-        if (dist(c.x, c.y, pl.x, pl.y) < pl.hitR + c.r + 8) {
-          c.dead = true;
-          if (pl.parasites < 6) {
-            pl.parasites++;
-            pl.paraT = STATUS.parasiteDrainEach / Math.max(1, pl.parasites);
-            if (pl.parasites === 1) this.gullTimer = Math.min(this.gullTimer, 3);
-          }
-          Audio.sfx("hurt");
-          this.particles.burst(c.x, c.y, "blood", 5, 90);
-        }
-      }
-      for (const g of this.seagulls) {
-        if (g.state !== "dive") continue;
-        if (dist(g.x, g.y, pl.x, pl.y) < pl.hitR + 34) {
-          if (pl.parasites > 0) {
-            pl.parasites = 0;
-            pl.tickDamage(SEAGULL.damage, this.particles);
-          }
-          g.state = "leave";
-          this.particles.burst(pl.x, pl.y, "foam", 8, 120);
-          Audio.sfx("warn");
-        }
-      }
       for (const bo of this.world.boosters) {
         if (bo.dead || bo.x < L - 40 || bo.x > Rr + 40) continue;
         if (dist(bo.x, bo.y, pl.x, pl.y) < pl.hitR + bo.r + 10) {
@@ -4722,7 +4525,34 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       Audio.sea(false);
       this.reviveCost = Math.round(25 + this.checkpointRegionIdx * 22);
       this.canRevive = this.stats().wind > 0 && !this.usedWind || this.save.eggs >= this.reviveCost;
-      this.state = "dead";
+      this.state = "dying";
+      this.dyingT = 0;
+    }
+    // the limp, sinking death — drift down to the seabed, then show the screen
+    updateDying(dt) {
+      this.dyingT += dt;
+      const pl = this.player;
+      pl.vy = Math.min(260, pl.vy + 240 * dt);
+      pl.vx *= 0.95;
+      pl.x += pl.vx * dt;
+      pl.y += pl.vy * dt;
+      pl.y = Math.min(pl.y, REF_H - WATER.seabedBand - pl.r * 0.3);
+      pl.pitch = lerp(pl.pitch, 1.6, dt * 1.3);
+      pl.flap += dt * 0.5;
+      if (Math.random() < 0.5) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, "bubble", (Math.random() - 0.5) * 30, -30);
+      if (this.player.wounds.length && Math.random() < 0.4) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, "blood", (Math.random() - 0.5) * 20, 24, { life: 1.4 });
+      const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
+      this.camX = lerp(this.camX, camTarget, clamp(dt * 2, 0, 1));
+      if (this.dyingT > 2.6 || (Input.takeTap() || Input.anyJustPressed())) this.state = "dead";
+    }
+    // intro: a hopeful egg hatches, you swim with your sibling, the sea takes them
+    updateIntro(dt) {
+      this.introT += dt;
+      if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 7.6);
+      if (this.introT >= 8.2) {
+        Audio.unlock();
+        this.beginPlay();
+      }
     }
     bankRun() {
       if (this.runBanked) return;
@@ -4805,7 +4635,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         }
         if (tap || key) {
           Audio.unlock();
-          this.startRun();
+          this.startRun(true);
         }
       } else if (this.state === "shop") {
         if (tap) {
@@ -4974,15 +4804,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.view.camX = this.camX;
       const vis = this.zoneVisuals();
       this.bg.render(ctx3, { ...view2, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
-      if (this.state === "play" || this.state === "laying" || this.state === "dead" || this.state === "win") this.renderWorld(ctx3, view2);
-      else this.renderMenuWorld(ctx3, view2);
+      const worldState = this.state === "play" || this.state === "laying" || this.state === "dead" || this.state === "win" || this.state === "dying";
+      if (worldState) this.renderWorld(ctx3, view2);
+      else if (this.state !== "intro") this.renderMenuWorld(ctx3, view2);
       this._buttons = [];
       if (this.state === "menu") this.renderMenu(ctx3, view2);
       else if (this.state === "shop") this.renderShop(ctx3, view2);
       else if (this.state === "wardrobe") this.renderWardrobe(ctx3, view2);
       else if (this.state === "loot") this.renderLoot(ctx3, view2);
+      else if (this.state === "intro") this.renderIntro(ctx3, view2);
       else if (this.state === "win") this.renderWin(ctx3, view2);
       else if (this.state === "dead") this.renderDead(ctx3, view2);
+      else if (this.state === "dying") this.renderDyingOverlay(ctx3, view2);
       else this.renderHUD(ctx3, view2);
     }
     zoneVisuals() {
@@ -5014,11 +4847,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     waveFlow(x) {
       return Math.sin(this.t * WAVE.freq + x * WAVE.swirl);
     }
+    // displacement of kelp as the player swims through it (proximity × velocity)
+    kelpPush(x) {
+      const pl = this.player;
+      if (!pl) return 0;
+      const prox = clamp(1 - Math.abs(pl.x - x) / 95, 0, 1);
+      return prox * clamp(pl.vx / 240, -1.3, 1.3);
+    }
     renderWorld(ctx3, view2) {
       this.worldXform(ctx3, view2);
       const L = this.camX - 140, Rr = this.camX + view2.worldViewW + 140;
       const inView = (x) => x > L && x < Rr;
-      for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx3, this.t, this.waveFlow(k.x));
+      for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx3, this.t, this.waveFlow(k.x), this.kelpPush(k.x));
       for (const c of this.world.currents) if (c.x1 > L && c.x0 < Rr) this.bg.drawCurrent(ctx3, c, this.t);
       for (const a of this.world.anchors) if (inView(a.x)) a.render(ctx3);
       for (const r of this.world.rocks) if (inView(r.x)) r.render(ctx3);
@@ -5099,6 +4939,91 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.particles.render(ctx3);
       ctx3.restore();
     }
+    // intro cutscene: a hopeful egg hatches, you swim with a sibling, the sea
+    // takes them. Skippable. Drawn in screen space over the ocean backdrop.
+    renderIntro(ctx3, view2) {
+      const { w, h } = view2;
+      const S = view2.scale;
+      const T = this.introT;
+      const cx = w / 2, cy = h * 0.46;
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      if (T < 3.4) {
+        const hatch = clamp((T - 2) / 1.4, 0, 1);
+        ctx3.save();
+        ctx3.translate(cx, cy + Math.sin(T * 1.5) * 6 * S);
+        ctx3.rotate(Math.sin(T * 5) * 0.05 * (1 - hatch));
+        drawEgg(ctx3, 46 * S * (1 - hatch * 0.55));
+        if (hatch > 0.25) {
+          ctx3.save();
+          const s = 0.4 + hatch * 0.7;
+          ctx3.scale(s, s);
+          drawSunfish(ctx3, 34 * S, this.t, { flap: this.menuFlap * 2, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.1 });
+          ctx3.restore();
+        }
+        ctx3.restore();
+      } else {
+        const loss = clamp((T - 5.6) / 1.4, 0, 1);
+        const sep = 56 * S + Math.sin(T * 1.2) * 8 * S;
+        ctx3.save();
+        ctx3.translate(cx - sep, cy + Math.sin(T * 1.6) * 9 * S);
+        ctx3.rotate(Math.sin(T * 1.3) * 0.08);
+        drawSunfish(ctx3, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.15 + loss * 0.7 });
+        ctx3.restore();
+        if (loss < 0.5) {
+          ctx3.save();
+          ctx3.globalAlpha = 1 - loss * 2;
+          ctx3.translate(cx + sep, cy + Math.sin(T * 1.6 + 1) * 9 * S);
+          ctx3.rotate(Math.sin(T * 1.3 + 1) * 0.08);
+          drawSunfish(ctx3, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: SKIN_BY_ID.moon });
+          ctx3.restore();
+        }
+        if (T > 5.2 && T < 6.8) {
+          const k = clamp((T - 5.2) / 1.2, 0, 1);
+          ctx3.save();
+          ctx3.translate(lerp(cx + w * 0.55, cx + sep, k), cy - 6 * S);
+          ctx3.scale(-1, 1);
+          ctx3.globalAlpha = 0.9;
+          drawShark(ctx3, 72 * S, this.t, { mouth: clamp((k - 0.55) / 0.3, 0, 1), color: "#06121c" });
+          ctx3.restore();
+        }
+        if (loss >= 0.45) {
+          ctx3.save();
+          ctx3.fillStyle = rgba(PALETTE.blood, 0.4 * (1 - (loss - 0.45) * 1.8));
+          ctx3.beginPath();
+          ctx3.arc(cx + sep, cy, 26 * S, 0, TAU);
+          ctx3.fill();
+          ctx3.restore();
+        }
+      }
+      const line = T < 2 ? STR.intro.egg : T < 3.4 ? STR.intro.hatch : T < 5.6 ? STR.intro.siblings : STR.intro.loss;
+      ctx3.globalAlpha = 0.92;
+      ctx3.font = FONT(19, "700");
+      ctx3.fillStyle = PALETTE.foam;
+      line.split("\n").forEach((ln, i) => ctx3.fillText(ln, cx, h * 0.78 + i * 26));
+      ctx3.globalAlpha = 0.4 + 0.3 * Math.sin(this.t * 3);
+      ctx3.font = FONT(12, "600");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
+      ctx3.fillText(STR.intro.skip, cx, h * 0.93);
+      ctx3.globalAlpha = 1;
+      if (T > 7.4) {
+        ctx3.fillStyle = rgba("#04101c", clamp((T - 7.4) / 0.8, 0, 1) * 0.85);
+        ctx3.fillRect(0, 0, w, h);
+      }
+    }
+    renderDyingOverlay(ctx3, view2) {
+      const { w, h } = view2;
+      const a = clamp(this.dyingT / 2.6, 0, 1);
+      ctx3.fillStyle = rgba("#04101c", a * 0.5);
+      ctx3.fillRect(0, 0, w, h);
+      ctx3.globalAlpha = clamp(this.dyingT * 1.2, 0, 0.85);
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      ctx3.font = FONT(20, "700");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
+      ctx3.fillText(STR.deathSink, w / 2, h * 0.3);
+      ctx3.globalAlpha = 1;
+    }
     // ---- HUD ----
     renderHUD(ctx3, view2) {
       const { w } = view2;
@@ -5153,15 +5078,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         wobblyText(ctx3, this.banner.text, w / 2, view2.h * 0.26, 28, PALETTE.foam, 5);
         ctx3.globalAlpha = 1;
       }
-      if (pl.parasites > 0) {
-        ctx3.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6);
-        ctx3.textAlign = "center";
-        ctx3.textBaseline = "middle";
-        ctx3.font = FONT(14, "700");
-        ctx3.fillStyle = "#ffd36b";
-        ctx3.fillText(STR.statusParasite(pl.parasites), w / 2, view2.h * 0.32);
-        ctx3.globalAlpha = 1;
-      }
       if (pl.caught || pl.grabbed) {
         ctx3.globalAlpha = 0.5 + 0.5 * Math.sin(this.t * 10);
         wobblyText(ctx3, pl.grabbed ? STR.grabbed : STR.caught, w / 2, view2.h * 0.4, 26, "#ffd36b", 9);
@@ -5201,6 +5117,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       if (pl.heal > 0) chips.push([STR.statusHeal, "#aef0c0"]);
       if (pl.slow > 0) chips.push([STR.statusSlow, "#9fb3bf"]);
       if (pl.poison > 0) chips.push([STR.statusPoison, PALETTE.poison]);
+      if (pl.wounds.length >= 3) chips.push([STR.statusWounded, PALETTE.blood]);
       let cx = pad, cy = pad + 30;
       ctx3.font = FONT(11, "800");
       ctx3.textAlign = "left";

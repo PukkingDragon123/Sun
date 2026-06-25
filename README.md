@@ -20,17 +20,20 @@ result, enable **GitHub Pages** on this branch — see below.
 > dash. The crossing is **long** and spans nine regions that get darker and
 > deadlier before the calm finale.
 >
-> **Hazards:** rocks, coral, **strong currents**, sea urchins, sea mines,
-> anchors, baited hooks, **fishing nets** (you bleed while tangled),
-> **boat propellers**, **jellyfish swarms** (sting *and* slow you), and
-> **plastic pollution** that looks like a jellyfish and *poisons* you.
+> **Hazards:** **strong currents**, sea urchins, sea mines, anchors, baited
+> hooks, **fishing nets** (you bleed while tangled), **boat propellers**,
+> **jellyfish swarms** (sting *and* slow you), and **plastic pollution** that
+> looks like a jellyfish and *poisons* you.
 >
 > **Predators:** sea lions, **blue sharks**, **cookiecutter sharks** (they take a
-> round bite — you swim away *cut like a cookie*), **swordfish** (easy straight
-> lunges early on), barracuda, anglerfish, pufferfish, **squid** (they grab),
-> the rare boss-tier **orca**, and **parasitic copepods** that latch on and drain
-> you — surface and a **seagull** will dive down to pluck them off (you take the
-> peck). Every wind-up shows a red **attack-area** so you can read it and dodge.
+> round chunk — you swim on *cut like a cookie*), **swordfish** (easy straight
+> lunges early on), barracuda, anglerfish, pufferfish, **squid** (they grab), and
+> the rare boss-tier **orca**. Every wind-up shows a red **attack-area** so you
+> can read it. Bite-wounds are permanent open chunks that **slow you down** the
+> more you collect.
+>
+> Your run opens with a **hatch** — you and a sibling, briefly — and ends, when
+> it ends, with a slow, sad **sink** to the seabed.
 >
 > Grab **boosters** mid-run (Nurse Shark heal-over-time, Swift Current, Bubble
 > Shield). Region **checkpoints** let you revive. Reach the Spawning Ground, lay

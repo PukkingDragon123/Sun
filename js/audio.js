@@ -86,7 +86,7 @@ function tickMelody(dt) {
   if (!padNodes) return;
   melodyTimer -= dt;
   if (melodyTimer <= 0) {
-    melodyTimer = 1.6 + Math.random() * 2.2;
+    melodyTimer = 2.6 + Math.random() * 3.2;   // sparse, melancholic
     melodyStep++;
     if (Math.random() < 0.82) {
       const f = SCALE[Math.floor(Math.random() * SCALE.length)] * (Math.random() < 0.3 ? 0.5 : 1);

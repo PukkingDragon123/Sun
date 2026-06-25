@@ -105,14 +105,15 @@ export class Player {
     this.shield = Math.max(0, this.shield - dt);
     if (this.heal > 0) { this.heal -= dt; this.healT -= dt; if (this.healT <= 0) { this.healT = STATUS.healTick; if (this.hp < this.maxHp) { this.hp++; if (particles) for (let i = 0; i < 6; i++) particles.spawn(this.x, this.y - this.r * 0.4, 'sparkle', (Math.random() - 0.5) * 70, -50, { color: '#aef0c0' }); } } }
     if (this.poison > 0) { this.poison -= dt; this.poisonT -= dt; if (this.poisonT <= 0) { this.poisonT = STATUS.poisonTick; this.tickDamage(STATUS.poisonDmg, particles); } }
-    if (this.parasites > 0) { this.paraT -= dt; if (this.paraT <= 0) { this.paraT = STATUS.parasiteDrainEach / this.parasites; this.tickDamage(1, particles); } }
 
     if (this.captured) { this.mouth = 0; this._animate(dt, 0.4); return; }
 
     const slowF = this.slow > 0 ? STATUS.slowMul : 1;
     const swiftF = this.swift > 0 ? STATUS.swiftMul : 1;
-    const effSpeed = this.speed * slowF * swiftF;
-    const effFreq = this.freq * (this.slow > 0 ? 0.72 : 1);
+    // open wounds drag you down — a battered fish swims slow and sluggish
+    const woundMul = clamp(1 - this.wounds.length * STATUS.woundSlowPer, 1 - STATUS.woundSlowMax, 1);
+    const effSpeed = this.speed * slowF * swiftF * woundMul;
+    const effFreq = this.freq * (this.slow > 0 ? 0.72 : 1) * (0.8 + 0.2 * woundMul);
 
     const steering = target && target.active && this.stun <= 0;
     if (steering) {

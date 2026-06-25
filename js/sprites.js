@@ -623,32 +623,43 @@ export function drawCoral(ctx, R, seed) {
 }
 
 // ------------------------------------------------------------------ the kelp
-// `flow` (≈ -1..1) is the live wave surge from the game, so the whole bed
-// sways together; tips lag and sway more than the holdfast for a fluid feel.
-export function drawKelp(ctx, H, t, seed, flow = 0) {
-  const segs = 9;
+// `flow` is the live wave surge; `push` is displacement from the player swimming
+// through it. Both bend the frond — tips more than the holdfast — for a soft,
+// organic, reactive sway.
+export function drawKelp(ctx, H, t, seed, flow = 0, push = 0) {
+  const segs = 11;
   const own = 0.6 + hash1(seed) * 0.5;
+  const lean = (hash1(seed + 3) - 0.5) * 0.3;
   const pts = [];
   for (let i = 0; i <= segs; i++) {
     const f = i / segs;
-    const bend = (flow * 0.7 + Math.sin(t * own + seed + f * 2.2) * 0.5) * f * f;
-    pts.push({ x: bend * 0.34 * H, y: -f * H });
+    const bend = (flow * 0.6 + Math.sin(t * own + seed + f * 2.4) * 0.45 + push * 1.5 + lean) * f * f;
+    pts.push({ x: bend * 0.36 * H, y: -f * H });
   }
+  const draw = (wid, style) => {
+    ctx.strokeStyle = style; ctx.lineWidth = wid; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; ctx.quadraticCurveTo(a.x, (a.y + b.y) / 2, b.x, b.y); }
+    ctx.stroke();
+  };
   const grad = ctx.createLinearGradient(0, 0, 0, -H);
-  grad.addColorStop(0, mixHex('#2f5d3a', P.ink, 0.3)); grad.addColorStop(1, '#5aa06a');
-  ctx.strokeStyle = grad; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; ctx.quadraticCurveTo(a.x, (a.y + b.y) / 2, b.x, b.y); }
-  ctx.stroke();
-  for (let i = 2; i < pts.length; i++) {       // translucent blades
+  grad.addColorStop(0, mixHex('#2f5d3a', P.ink, 0.35)); grad.addColorStop(1, '#62ab72');
+  draw(8, grad);
+  draw(3, rgba('#a6e0a8', 0.45));                 // inner highlight
+  // organic tapered leaf-blades, alternating, angled by flow + push
+  for (let i = 2; i < pts.length; i++) {
     const p = pts[i], side = i % 2 ? 1 : -1;
-    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(side * 0.5 + flow * 0.3);
-    ctx.fillStyle = rgba(mixHex('#4f8255', '#7fc98a', hash1(seed + i)), 0.9);
-    ctx.beginPath(); ctx.ellipse(side * 0.14 * H, 0, 0.2 * H, 0.045 * H, 0, 0, TAU); ctx.fill();
+    const ang = side * 0.6 + (flow + push) * 0.4 + Math.sin(t * own + i) * 0.1;
+    const ln = (0.16 + hash1(seed + i) * 0.1) * H;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(ang);
+    ctx.fillStyle = rgba(mixHex('#4f8255', '#86d390', hash1(seed + i)), 0.92);
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(side * ln * 0.5, -0.05 * H, side * ln, 0);
+    ctx.quadraticCurveTo(side * ln * 0.5, 0.05 * H, 0, 0); ctx.fill();
     ctx.restore();
   }
-  ctx.fillStyle = rgba('#9ed6a0', 0.9);          // gas-bladder bulbs near the tips
-  for (let i = pts.length - 3; i < pts.length; i++) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x, p.y, 0.03 * H, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = rgba('#bfe9a0', 0.9);           // gas-bladder bulbs near the tips
+  for (let i = pts.length - 3; i < pts.length; i++) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x, p.y, 0.028 * H, 0, TAU); ctx.fill(); }
 }
 
 // -------------------------------------------------------------- the jellyfish
@@ -747,23 +758,20 @@ function fan(R, hScale, up) {
 // drawn already clipped to the body, so a circle near the edge reads as a
 // scooped-out "cookie" bite missing from the silhouette.
 function drawWound(ctx, R, w) {
-  const cx = Math.cos(w.a) * 0.66 * R, cy = Math.sin(w.a) * 0.52 * R;
-  if (w.cut) {                                    // a slashing gash
-    const len = (0.3 + w.r) * R, ang = w.a + 1.2;
-    const dx = Math.cos(ang) * len * 0.5, dy = Math.sin(ang) * len * 0.5;
-    ctx.strokeStyle = rgba('#5a160f', 0.95); ctx.lineWidth = R * 0.07; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
-    ctx.strokeStyle = rgba(P.blood, 0.8); ctx.lineWidth = R * 0.03;
-    ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
-  } else {                                         // a round cookiecutter scoop
-    const br = w.r * R;
-    ctx.fillStyle = rgba(P.bloodDark, 0.95); ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.fill();
-    ctx.fillStyle = rgba('#5a160f', 0.95); ctx.beginPath(); ctx.arc(cx, cy, br * 0.66, 0, TAU); ctx.fill();
-    ctx.strokeStyle = rgba(P.blood, 0.85); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.stroke();
-  }
-  // a trickle of blood running down from the wound
-  ctx.strokeStyle = rgba(P.blood, 0.45); ctx.lineWidth = R * 0.035; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(cx + R * 0.03, cy + R * 0.18, cx - R * 0.02, cy + R * 0.34); ctx.stroke();
+  const cx = Math.cos(w.a) * 0.7 * R, cy = Math.sin(w.a) * 0.55 * R;
+  const rad = ((w.cut ? 0.18 : 0.26) + w.r) * R;       // a sizeable chunk, not a scratch
+  const blob = blobPts(cx, cy, rad, rad * 0.82, 9, 0.42, (w.a * 97) | 0);
+  // bite a real chunk out of the body silhouette (reveals the water behind)
+  ctx.save(); ctx.globalCompositeOperation = 'destination-out';
+  sketchShape(ctx, blob, { fill: '#000', outline: null, wobble: 1.2, key: (w.a * 53) | 0 });
+  ctx.restore();
+  // dark gore rim + raw red flesh just inside it
+  sketchShape(ctx, blob, { fill: null, outline: rgba('#3a0d08', 0.95), lineW: R * 0.06, wobble: 1.4, key: (w.a * 53) | 0 });
+  sketchShape(ctx, blobPts(cx, cy, rad * 0.82, rad * 0.66, 8, 0.4, (w.a * 31) | 0),
+    { fill: null, outline: rgba(P.blood, 0.6), lineW: R * 0.035, wobble: 1.6, key: (w.a * 17) | 0 });
+  // a trickle running down from the chunk
+  ctx.strokeStyle = rgba(P.blood, 0.5); ctx.lineWidth = R * 0.045; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx, cy + rad * 0.5); ctx.quadraticCurveTo(cx + R * 0.03, cy + R * 0.3, cx - R * 0.02, cy + R * 0.52); ctx.stroke();
 }
 function drawParasites(ctx, R, n) {
   for (let i = 0; i < Math.min(n, 6); i++) {

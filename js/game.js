@@ -16,7 +16,7 @@ import {
   Player, Seal, Shark, Barracuda, Angler, Puffer, Squid, Boat, Jelly,
   Swordfish, Cookiecutter, Copepod, Seagull, Particles, seabedLimit,
 } from './entities.js';
-import { drawSunfish, drawClam } from './sprites.js';
+import { drawSunfish, drawClam, drawEgg, drawShark } from './sprites.js';
 import { STR } from './strings.js';
 
 const SAVE_KEY = 'sunfish.useless.v2';
@@ -106,7 +106,7 @@ export class Game {
     };
   }
 
-  startRun() {
+  startRun(intro = false) {
     this.seed = (Math.floor(Math.random() * 0x7fffffff)) >>> 0;
     this.world = generateWorld(this.seed);
     const st = this.stats();
@@ -118,16 +118,21 @@ export class Game {
 
     this.clearEntities();
     this.spawnIdx = 0; this.runEggs = 0; this.runHits = 0; this.runBanked = false; this.usedWind = false;
-    this.gullTimer = SEAGULL.interval; this.netDrainT = 0;
+    this.netDrainT = 0;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
 
     this.regionIdx = zoneIndexAt(this.player.x);
     this.checkpointX = sx; this.checkpointRegionIdx = this.regionIdx;
     this.recenterCamera();
+    this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
+    // the hatchling intro only makes sense when you actually start at the egg
+    if (intro && hs === 0) { this.state = 'intro'; this.introT = 0; Audio.music(true); }
+    else this.beginPlay();
+  }
+  beginPlay() {
     this.state = 'play';
     this.banner = { text: WORLD.zones[this.regionIdx].name, life: 2.6 };
-    this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
     Audio.music(true); Audio.sea(true);
   }
 
@@ -144,6 +149,8 @@ export class Game {
     if (this.banner) { this.banner.life -= dt; if (this.banner.life <= 0) this.banner = null; }
     this.particles.update(dt);
 
+    if (this.state === 'intro') { this.updateIntro(dt); return; }
+    if (this.state === 'dying') { this.updateDying(dt); return; }
     if (this.state === 'menu' || this.state === 'shop' || this.state === 'wardrobe' || this.state === 'loot') { this.updateUI(dt); return; }
     if (this.state === 'dead' || this.state === 'win') { this.updateEnd(); return; }
 
@@ -182,14 +189,6 @@ export class Game {
     for (const c of this.copepods) c.update(dt, env);
     for (const b of this.boats) b.update(dt);
     for (const j of this.jellies) j.update(dt);
-
-    // summon a seagull to pluck off parasites (you must take the peck)
-    if (this.state === 'play' && pl.parasites > 0) {
-      this.gullTimer -= dt;
-      if (this.gullTimer <= 0 && this.seagulls.length === 0) { this.seagulls.push(new Seagull(pl.x + (Math.random() - 0.5) * 120)); this.gullTimer = SEAGULL.interval; }
-    }
-    for (const g of this.seagulls) g.update(dt, env);
-    this.seagulls = this.seagulls.filter((g) => !g.done);
 
     const L = this.camX - 500, Rr = this.camX + this.view.worldViewW + 600;
     for (const m of this.world.mines) if (m.x > L && m.x < Rr) m.update(dt);
@@ -348,25 +347,6 @@ export class Game {
       }
     }
 
-    // parasitic copepods latch on
-    for (const c of this.copepods) {
-      if (c.dead || c.x < L || c.x > Rr) continue;
-      if (dist(c.x, c.y, pl.x, pl.y) < pl.hitR + c.r + 8) {
-        c.dead = true;
-        if (pl.parasites < 6) { pl.parasites++; pl.paraT = STATUS.parasiteDrainEach / Math.max(1, pl.parasites); if (pl.parasites === 1) this.gullTimer = Math.min(this.gullTimer, 3); }
-        Audio.sfx('hurt'); this.particles.burst(c.x, c.y, 'blood', 5, 90);
-      }
-    }
-
-    // a diving seagull plucks the parasites off — at the cost of one peck
-    for (const g of this.seagulls) {
-      if (g.state !== 'dive') continue;
-      if (dist(g.x, g.y, pl.x, pl.y) < pl.hitR + 34) {
-        if (pl.parasites > 0) { pl.parasites = 0; pl.tickDamage(SEAGULL.damage, this.particles); }
-        g.state = 'leave'; this.particles.burst(pl.x, pl.y, 'foam', 8, 120); Audio.sfx('warn');
-      }
-    }
-
     // booster pickups
     for (const bo of this.world.boosters) {
       if (bo.dead || bo.x < L - 40 || bo.x > Rr + 40) continue;
@@ -494,7 +474,30 @@ export class Game {
     Audio.sea(false);
     this.reviveCost = Math.round(25 + this.checkpointRegionIdx * 22);
     this.canRevive = (this.stats().wind > 0 && !this.usedWind) || this.save.eggs >= this.reviveCost;
-    this.state = 'dead';
+    this.state = 'dying'; this.dyingT = 0;   // sink, sadly, before the end screen
+  }
+
+  // the limp, sinking death — drift down to the seabed, then show the screen
+  updateDying(dt) {
+    this.dyingT += dt;
+    const pl = this.player;
+    pl.vy = Math.min(260, pl.vy + 240 * dt); pl.vx *= 0.95;
+    pl.x += pl.vx * dt; pl.y += pl.vy * dt;
+    pl.y = Math.min(pl.y, REF_H - WATER.seabedBand - pl.r * 0.3);
+    pl.pitch = lerp(pl.pitch, 1.6, dt * 1.3);     // roll limp
+    pl.flap += dt * 0.5;
+    if (Math.random() < 0.5) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, 'bubble', (Math.random() - 0.5) * 30, -30);
+    if (this.player.wounds.length && Math.random() < 0.4) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, 'blood', (Math.random() - 0.5) * 20, 24, { life: 1.4 });
+    const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
+    this.camX = lerp(this.camX, camTarget, clamp(dt * 2, 0, 1));
+    if (this.dyingT > 2.6 || (Input.takeTap() || Input.anyJustPressed())) this.state = 'dead';
+  }
+
+  // intro: a hopeful egg hatches, you swim with your sibling, the sea takes them
+  updateIntro(dt) {
+    this.introT += dt;
+    if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 7.6);
+    if (this.introT >= 8.2) { Audio.unlock(); this.beginPlay(); }
   }
 
   bankRun() {
@@ -539,7 +542,7 @@ export class Game {
         if (hit === 'loot') { this.openLoot(); return; }
         if (hit === 'mute') { this.save.mute = Audio.toggleMute(); this.persist(); return; }
       }
-      if (tap || key) { Audio.unlock(); this.startRun(); }
+      if (tap || key) { Audio.unlock(); this.startRun(true); }
     } else if (this.state === 'shop') {
       if (tap) { const hit = this.hitButton(tap); if (hit === 'back') { this.state = 'menu'; Audio.sfx('ui'); } else if (hit && hit.startsWith('buy:')) this.buy(hit.slice(4)); }
       else if (key) { this.state = 'menu'; Audio.sfx('ui'); }
@@ -607,16 +610,19 @@ export class Game {
     const vis = this.zoneVisuals();
     this.bg.render(ctx, { ...view, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
 
-    if (this.state === 'play' || this.state === 'laying' || this.state === 'dead' || this.state === 'win') this.renderWorld(ctx, view);
-    else this.renderMenuWorld(ctx, view);
+    const worldState = this.state === 'play' || this.state === 'laying' || this.state === 'dead' || this.state === 'win' || this.state === 'dying';
+    if (worldState) this.renderWorld(ctx, view);
+    else if (this.state !== 'intro') this.renderMenuWorld(ctx, view);
 
     this._buttons = [];
     if (this.state === 'menu') this.renderMenu(ctx, view);
     else if (this.state === 'shop') this.renderShop(ctx, view);
     else if (this.state === 'wardrobe') this.renderWardrobe(ctx, view);
     else if (this.state === 'loot') this.renderLoot(ctx, view);
+    else if (this.state === 'intro') this.renderIntro(ctx, view);
     else if (this.state === 'win') this.renderWin(ctx, view);
     else if (this.state === 'dead') this.renderDead(ctx, view);
+    else if (this.state === 'dying') this.renderDyingOverlay(ctx, view);
     else this.renderHUD(ctx, view);
   }
 
@@ -638,12 +644,18 @@ export class Game {
 
   // live wave surge at a world x, so kelp etc. sway in time with the push
   waveFlow(x) { return Math.sin(this.t * WAVE.freq + x * WAVE.swirl); }
+  // displacement of kelp as the player swims through it (proximity × velocity)
+  kelpPush(x) {
+    const pl = this.player; if (!pl) return 0;
+    const prox = clamp(1 - Math.abs(pl.x - x) / 95, 0, 1);
+    return prox * clamp(pl.vx / 240, -1.3, 1.3);
+  }
 
   renderWorld(ctx, view) {
     this.worldXform(ctx, view);
     const L = this.camX - 140, Rr = this.camX + view.worldViewW + 140;
     const inView = (x) => x > L && x < Rr;
-    for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx, this.t, this.waveFlow(k.x));
+    for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx, this.t, this.waveFlow(k.x), this.kelpPush(k.x));
     for (const c of this.world.currents) if (c.x1 > L && c.x0 < Rr) this.bg.drawCurrent(ctx, c, this.t);
     for (const a of this.world.anchors) if (inView(a.x)) a.render(ctx);
     for (const r of this.world.rocks) if (inView(r.x)) r.render(ctx);
@@ -709,6 +721,42 @@ export class Game {
     ctx.restore();
   }
 
+  // intro cutscene: a hopeful egg hatches, you swim with a sibling, the sea
+  // takes them. Skippable. Drawn in screen space over the ocean backdrop.
+  renderIntro(ctx, view) {
+    const { w, h } = view; const S = view.scale; const T = this.introT; const cx = w / 2, cy = h * 0.46;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (T < 3.4) {
+      const hatch = clamp((T - 2.0) / 1.4, 0, 1);
+      ctx.save(); ctx.translate(cx, cy + Math.sin(T * 1.5) * 6 * S); ctx.rotate(Math.sin(T * 5) * 0.05 * (1 - hatch));
+      drawEgg(ctx, 46 * S * (1 - hatch * 0.55));
+      if (hatch > 0.25) { ctx.save(); const s = 0.4 + hatch * 0.7; ctx.scale(s, s); drawSunfish(ctx, 34 * S, this.t, { flap: this.menuFlap * 2, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.1 }); ctx.restore(); }
+      ctx.restore();
+    } else {
+      const loss = clamp((T - 5.6) / 1.4, 0, 1);
+      const sep = 56 * S + Math.sin(T * 1.2) * 8 * S;
+      ctx.save(); ctx.translate(cx - sep, cy + Math.sin(T * 1.6) * 9 * S); ctx.rotate(Math.sin(T * 1.3) * 0.08);
+      drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.15 + loss * 0.7 }); ctx.restore();
+      if (loss < 0.5) { ctx.save(); ctx.globalAlpha = 1 - loss * 2; ctx.translate(cx + sep, cy + Math.sin(T * 1.6 + 1) * 9 * S); ctx.rotate(Math.sin(T * 1.3 + 1) * 0.08); drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: SKIN_BY_ID.moon }); ctx.restore(); }
+      if (T > 5.2 && T < 6.8) { const k = clamp((T - 5.2) / 1.2, 0, 1); ctx.save(); ctx.translate(lerp(cx + w * 0.55, cx + sep, k), cy - 6 * S); ctx.scale(-1, 1); ctx.globalAlpha = 0.9; drawShark(ctx, 72 * S, this.t, { mouth: clamp((k - 0.55) / 0.3, 0, 1), color: '#06121c' }); ctx.restore(); }
+      if (loss >= 0.45) { ctx.save(); ctx.fillStyle = rgba(P.blood, 0.4 * (1 - (loss - 0.45) * 1.8)); ctx.beginPath(); ctx.arc(cx + sep, cy, 26 * S, 0, TAU); ctx.fill(); ctx.restore(); }
+    }
+    const line = T < 2.0 ? STR.intro.egg : T < 3.4 ? STR.intro.hatch : T < 5.6 ? STR.intro.siblings : STR.intro.loss;
+    ctx.globalAlpha = 0.92; ctx.font = FONT(19, '700'); ctx.fillStyle = P.foam;
+    line.split('\n').forEach((ln, i) => ctx.fillText(ln, cx, h * 0.78 + i * 26));
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(this.t * 3); ctx.font = FONT(12, '600'); ctx.fillStyle = rgba(P.foam, 0.7);
+    ctx.fillText(STR.intro.skip, cx, h * 0.93); ctx.globalAlpha = 1;
+    if (T > 7.4) { ctx.fillStyle = rgba('#04101c', clamp((T - 7.4) / 0.8, 0, 1) * 0.85); ctx.fillRect(0, 0, w, h); }
+  }
+
+  renderDyingOverlay(ctx, view) {
+    const { w, h } = view; const a = clamp(this.dyingT / 2.6, 0, 1);
+    ctx.fillStyle = rgba('#04101c', a * 0.5); ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = clamp(this.dyingT * 1.2, 0, 0.85); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = FONT(20, '700'); ctx.fillStyle = rgba(P.foam, 0.85); ctx.fillText(STR.deathSink, w / 2, h * 0.3);
+    ctx.globalAlpha = 1;
+  }
+
   // ---- HUD ----
   renderHUD(ctx, view) {
     const { w } = view; const pad = 14 * Math.max(1, view.scale * 0.7);
@@ -746,11 +794,6 @@ export class Game {
       wobblyText(ctx, this.banner.text, w / 2, view.h * 0.26, 28, P.foam, 5);
       ctx.globalAlpha = 1;
     }
-    if (pl.parasites > 0) {
-      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = FONT(14, '700'); ctx.fillStyle = '#ffd36b'; ctx.fillText(STR.statusParasite(pl.parasites), w / 2, view.h * 0.32);
-      ctx.globalAlpha = 1;
-    }
     if (pl.caught || pl.grabbed) {
       ctx.globalAlpha = 0.5 + 0.5 * Math.sin(this.t * 10);
       wobblyText(ctx, pl.grabbed ? STR.grabbed : STR.caught, w / 2, view.h * 0.4, 26, '#ffd36b', 9);
@@ -776,6 +819,7 @@ export class Game {
     if (pl.heal > 0) chips.push([STR.statusHeal, '#aef0c0']);
     if (pl.slow > 0) chips.push([STR.statusSlow, '#9fb3bf']);
     if (pl.poison > 0) chips.push([STR.statusPoison, P.poison]);
+    if (pl.wounds.length >= 3) chips.push([STR.statusWounded, P.blood]);
     let cx = pad, cy = pad + 30;
     ctx.font = FONT(11, '800'); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     for (const [label, col] of chips) {

@@ -157,32 +157,35 @@ export class Background {
   // Drawn in SCREEN space with parallax so they read as distant.
   drawAmbient(ctx, view, t, light) {
     const { w, h, scale, camX } = view;
-    // whales — large, slow, faint silhouettes far in the back
+    // ONE distant whale, faint and infrequent — drifts in over a long span so
+    // it's mostly off-screen (just a hint of something huge out there).
     ctx.save();
-    ctx.globalAlpha = 0.18 + light * 0.12;
-    ctx.fillStyle = mixHex(P.deepNavy, '#000', 0.35);
-    for (let i = 0; i < 2; i++) {
-      const span = w + 1200;
-      let bx = ((i * 780 - camX * 0.16 + t * 9) % span + span) % span - 220;
-      const by = h * (0.52 + 0.16 * Math.sin(t * 0.07 + i * 2.3));
-      const R = (72 + i * 26) * scale;
-      ctx.save(); ctx.translate(bx, by); ctx.scale(-1, 1); drawWhale(ctx, R, t + i * 3); ctx.restore();
-    }
+    ctx.globalAlpha = 0.1 + light * 0.07;
+    ctx.fillStyle = mixHex(P.deepNavy, '#000', 0.4);
+    const wspan = w + 2600;
+    const wx = ((-camX * 0.13 + t * 7) % wspan + wspan) % wspan - 320;
+    const wy = h * (0.58 + 0.1 * Math.sin(t * 0.05));
+    ctx.save(); ctx.translate(wx, wy); ctx.scale(-1, 1); drawWhale(ctx, 82 * scale, t); ctx.restore();
     ctx.restore();
-    // a school of tuna — small fish swimming together at mid-depth
-    ctx.save();
-    ctx.globalAlpha = 0.3 + light * 0.2;
-    ctx.fillStyle = mixHex(P.deepNavy, P.surfaceTeal, 0.5);
-    const span2 = w + 760;
-    const sx = ((-camX * 0.32 - t * 24) % span2 + span2) % span2 - 80;
-    const sy0 = h * (0.4 + 0.12 * Math.sin(t * 0.25));
-    for (let i = 0; i < 16; i++) {
-      const col = i % 6, row = (i / 6) | 0;
-      const fx = sx + col * 26 * scale + row * 10 * scale;
-      const fy = sy0 + row * 18 * scale + Math.sin(t * 3 + i * 0.7) * 5 * scale;
-      ctx.save(); ctx.translate(fx, fy); ctx.scale(-1, 1); drawTuna(ctx, 11 * scale, t, i * 1.3); ctx.restore();
+    // several drifting schools of small fish at different depths and speeds
+    const schools = [
+      { mix: 0.5, par: 0.32, spd: 24, y: 0.34, n: 16, r: 10, a: 0.32 },
+      { mix: 0.4, par: 0.52, spd: 40, y: 0.62, n: 12, r: 8, a: 0.26 },
+      { mix: 0.62, par: 0.22, spd: 15, y: 0.47, n: 22, r: 13, a: 0.4 },
+    ];
+    for (let s = 0; s < schools.length; s++) {
+      const sc = schools[s], span = w + 760;
+      const sx = ((-camX * sc.par - t * sc.spd + s * 430) % span + span) % span - 110;
+      const sy0 = h * (sc.y + 0.07 * Math.sin(t * 0.2 + s));
+      ctx.save(); ctx.globalAlpha = sc.a * (0.55 + light * 0.45); ctx.fillStyle = mixHex(P.deepNavy, P.surfaceTeal, sc.mix);
+      for (let i = 0; i < sc.n; i++) {
+        const col = i % 6, row = (i / 6) | 0;
+        const fx = sx + col * 24 * scale + row * 10 * scale;
+        const fy = sy0 + row * 16 * scale + Math.sin(t * 3 + i * 0.7 + s) * 5 * scale;
+        ctx.save(); ctx.translate(fx, fy); ctx.scale(-1, 1); drawTuna(ctx, sc.r * scale, t, i * 1.3 + s); ctx.restore();
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   // a flowing current band (wavy streamlines + carried motes); WORLD space.
