@@ -70,6 +70,7 @@ export class Player {
     audio.sfx('hurt');
     for (let i = 0; i < 14; i++) particles.spawn(this.x, this.y, 'blood', (Math.random() - 0.5) * 240, (Math.random() - 0.5) * 240);
     for (let i = 0; i < 8; i++) particles.spawn(this.x, this.y, 'inkpuff', (Math.random() - 0.5) * 180, (Math.random() - 0.5) * 180);
+    if (Math.random() < 0.5) this.addWound(true);   // a fresh cut to remember it by
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }
     return true;
   }
@@ -86,10 +87,10 @@ export class Player {
     else if (type === 'swift') { this.swift = STATUS.swiftTime; }
     else if (type === 'shield') { this.shield = STATUS.shieldTime; }
   }
-  addWound() {
-    const a = (Math.random() < 0.6 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.8;
-    this.wounds.push({ a, r: 0.2 + Math.random() * 0.12 });
-    if (this.wounds.length > 7) this.wounds.shift();
+  addWound(cut = false) {
+    const a = (Math.random() < 0.6 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.9;
+    this.wounds.push({ a, r: (cut ? 0.16 : 0.2) + Math.random() * 0.12, cut });
+    if (this.wounds.length > 8) this.wounds.shift();
   }
 
   update(dt, target, particles) {
@@ -135,6 +136,9 @@ export class Player {
     this.mouth = Math.max(0, this.mouth - dt * 3);
     this._animate(dt, Math.min(1, sp / Math.max(1, this.speed)));
     if (Math.random() < 0.04) particles.spawn(this.x + this.r * 0.4, this.y - this.r * 0.2, 'bubble', 6, -20);
+    // open wounds keep weeping blood
+    if (this.wounds.length && Math.random() < 0.03 * this.wounds.length + (this.hurt > 0.4 ? 0.16 : 0))
+      particles.spawn(this.x + (Math.random() - 0.5) * this.r, this.y + (Math.random() - 0.3) * this.r, 'blood', (Math.random() - 0.5) * 30, 30 + Math.random() * 40, { life: 1.2, size: 2 + Math.random() * 3 });
   }
 
   _animate(dt, effort) {
@@ -158,9 +162,11 @@ export class Player {
     ctx.scale(this.face, 1); ctx.rotate(this.pitch);
     const flashing = this.invuln > 0 && Math.floor(this.invuln * 14) % 2 === 0;
     if (flashing) ctx.globalAlpha = 0.45;
+    const ratio = this.hp / Math.max(1, this.maxHp);
+    const sad = clamp((this.hp <= 1 ? 1 : ratio < 0.5 ? 0.6 : 0.25) + this.hurt * 0.5, 0, 1);
     drawSunfish(ctx, this.r, t, {
       flap: this.flap, blink: this.blink, hurt: this.hurt, lookX: 1, mouth: this.mouth,
-      dash: this.dashT > 0, skin: this.skin, wounds: this.wounds,
+      dash: this.dashT > 0, skin: this.skin, wounds: this.wounds, sad,
       poison: this.poison > 0, parasites: this.parasites,
     });
     ctx.globalAlpha = 1; ctx.restore();
@@ -716,7 +722,7 @@ export class Plankton {
 // ------------------------------------------------------------------ Kelp
 export class Kelp {
   constructor(x, h, seed) { this.x = x; this.h = h; this.seed = seed; }
-  render(ctx, t) { ctx.save(); ctx.translate(this.x, REF_H - WATER.seabedBand + 10); drawKelp(ctx, this.h, t, this.seed); ctx.restore(); }
+  render(ctx, t, flow = 0) { ctx.save(); ctx.translate(this.x, REF_H - WATER.seabedBand + 10); drawKelp(ctx, this.h, t, this.seed, flow); ctx.restore(); }
 }
 
 // ------------------------------------------------------- Current (push field)

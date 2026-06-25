@@ -2,9 +2,10 @@
 // by the camera. Layered depth + drifting godrays + wavy surface + sandy floor
 // + caustics + paper grain. Each region passes a `dark` factor (0 sunlit .. 1
 // midnight) and its id, so the same painter renders shallows or trench.
-import { REF_H, WATER, PALETTE as P } from './config.js';
+import { REF_H, WATER, PALETTE as P, WAVE } from './config.js';
 import { TAU, hash1, rgba, mixHex, lerp, clamp } from './utils.js';
 import { godrays, makePaper, wash } from './draw.js';
+import { drawTuna, drawWhale } from './sprites.js';
 
 export class Background {
   constructor() { this.paper = null; this.t = 0; }
@@ -40,13 +41,16 @@ export class Background {
     for (let i = 0; i < 14; i++) {
       let bx = (i * 197 + par2) % (w + 400) - 200; if (bx < -200) bx += w + 400;
       const kh = (80 + hash1(i * 3) * 150) * scale;
-      const sway = Math.sin(t * 0.5 + i) * 16;
+      const sway = (Math.sin(t * WAVE.freq + bx * 0.012) * 0.7 + Math.sin(t * 0.5 + i) * 0.3) * 22;  // sways with the waves
       ctx.beginPath();
       ctx.moveTo(bx - 10, floorY);
       ctx.quadraticCurveTo(bx + sway, floorY - kh * 0.6, bx + sway * 1.4, floorY - kh);
       ctx.quadraticCurveTo(bx + sway, floorY - kh * 0.6, bx + 10, floorY);
       ctx.closePath(); ctx.fill();
     }
+
+    // 3b. ambient life drifting through the deep background
+    this.drawAmbient(ctx, view, t, light);
 
     // 4. godrays (fade out in the dark)
     if (light > 0.15) godrays(ctx, w, h, t, 6, light);
@@ -65,24 +69,31 @@ export class Background {
       ctx.restore();
     }
 
-    // 5. surface band with wavy waterline + foam (dims with depth)
+    // 5. surface — layered translucent swells + a bright crest + foam
     const surfH = sy(WATER.surfaceBand);
-    const sg = ctx.createLinearGradient(0, 0, 0, surfH * 1.4);
-    sg.addColorStop(0, rgba('#bfe9f0', 0.85 * light));
-    sg.addColorStop(1, rgba('#bfe9f0', 0));
-    ctx.fillStyle = sg; ctx.fillRect(0, 0, w, surfH * 1.4);
-    ctx.strokeStyle = rgba(P.foam, 0.7 * light); ctx.lineWidth = 2 * scale;
+    const waveAt = (x, a, b) => surfH
+      + Math.sin((x + camX) * 0.018 + t * 1.5) * a * scale
+      + Math.sin((x + camX) * 0.006 - t * 1.1) * b * scale
+      + Math.sin((x + camX) * 0.045 + t * 2.2) * a * 0.4 * scale;
+    const sg = ctx.createLinearGradient(0, 0, 0, surfH * 1.6);
+    sg.addColorStop(0, rgba('#cdeef5', 0.9 * light)); sg.addColorStop(1, rgba('#bfe9f0', 0));
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, 0);
+    for (let x = w; x >= 0; x -= 14) ctx.lineTo(x, waveAt(x, 5, 4));
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = rgba('#bfe9f0', 0.16 * light);   // a second swell for depth
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, 0);
+    for (let x = w; x >= 0; x -= 14) ctx.lineTo(x, waveAt(x, 8, 6) + 6 * scale);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rgba(P.foam, 0.8 * light); ctx.lineWidth = 2 * scale;   // bright crest
     ctx.beginPath();
-    for (let x = 0; x <= w; x += 12) {
-      const yy = surfH + Math.sin((x + camX) * 0.02 + t * 1.6) * 4 * scale + Math.sin((x + camX) * 0.005 - t) * 3 * scale;
-      if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
-    }
+    for (let x = 0; x <= w; x += 10) { const yy = waveAt(x, 5, 4); if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy); }
     ctx.stroke();
     if (light > 0.3) {
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 20; i++) {
         const fx = (i * 137.5 - camX * 0.8) % w; const x = fx < 0 ? fx + w : fx;
-        ctx.fillStyle = rgba(P.foam, (0.5 + 0.3 * Math.sin(t * 2 + i)) * light);
-        ctx.beginPath(); ctx.arc(x, surfH * (0.3 + hash1(i) * 0.6), 1.5 * scale, 0, TAU); ctx.fill();
+        ctx.fillStyle = rgba(P.foam, (0.4 + 0.35 * Math.sin(t * 2 + i)) * light);
+        ctx.beginPath(); ctx.arc(x, waveAt(x, 5, 4) - 3 * scale, 1.6 * scale, 0, TAU); ctx.fill();
       }
     }
 
@@ -142,16 +153,60 @@ export class Background {
     ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
   }
 
-  // current-band visual (drifting streaks); called in WORLD space.
+  // ambient background life: a slow whale or two + a drifting school of tuna.
+  // Drawn in SCREEN space with parallax so they read as distant.
+  drawAmbient(ctx, view, t, light) {
+    const { w, h, scale, camX } = view;
+    // whales — large, slow, faint silhouettes far in the back
+    ctx.save();
+    ctx.globalAlpha = 0.18 + light * 0.12;
+    ctx.fillStyle = mixHex(P.deepNavy, '#000', 0.35);
+    for (let i = 0; i < 2; i++) {
+      const span = w + 1200;
+      let bx = ((i * 780 - camX * 0.16 + t * 9) % span + span) % span - 220;
+      const by = h * (0.52 + 0.16 * Math.sin(t * 0.07 + i * 2.3));
+      const R = (72 + i * 26) * scale;
+      ctx.save(); ctx.translate(bx, by); ctx.scale(-1, 1); drawWhale(ctx, R, t + i * 3); ctx.restore();
+    }
+    ctx.restore();
+    // a school of tuna — small fish swimming together at mid-depth
+    ctx.save();
+    ctx.globalAlpha = 0.3 + light * 0.2;
+    ctx.fillStyle = mixHex(P.deepNavy, P.surfaceTeal, 0.5);
+    const span2 = w + 760;
+    const sx = ((-camX * 0.32 - t * 24) % span2 + span2) % span2 - 80;
+    const sy0 = h * (0.4 + 0.12 * Math.sin(t * 0.25));
+    for (let i = 0; i < 16; i++) {
+      const col = i % 6, row = (i / 6) | 0;
+      const fx = sx + col * 26 * scale + row * 10 * scale;
+      const fy = sy0 + row * 18 * scale + Math.sin(t * 3 + i * 0.7) * 5 * scale;
+      ctx.save(); ctx.translate(fx, fy); ctx.scale(-1, 1); drawTuna(ctx, 11 * scale, t, i * 1.3); ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // a flowing current band (wavy streamlines + carried motes); WORLD space.
   drawCurrent(ctx, c, t) {
     ctx.save();
-    ctx.strokeStyle = rgba('#bfe9f0', 0.12); ctx.lineWidth = 2;
     const dir = Math.sign(c.fx) || 1;
-    for (let i = 0; i < 10; i++) {
-      const yy = lerp(c.y0, c.y1, (i + 0.5) / 10);
-      const phase = (t * dir * 0.4 + i * 0.3) % 1;
-      const sx = lerp(c.x0, c.x1, phase);
-      ctx.beginPath(); ctx.moveTo(sx, yy); ctx.lineTo(sx + dir * 40, yy); ctx.stroke();
+    const hh = c.y1 - c.y0, span = c.x1 - c.x0;
+    ctx.lineCap = 'round'; ctx.lineWidth = 2;
+    for (let i = 0; i < 7; i++) {
+      const yy = c.y0 + hh * ((i + 0.5) / 7);
+      const amp = 6 + (i % 2) * 5;
+      ctx.strokeStyle = rgba('#cdeef5', 0.1 + 0.05 * Math.sin(t * 2 + i) + (c.strong ? 0.06 : 0));
+      ctx.beginPath();
+      for (let x = c.x0; x <= c.x1; x += 14) {
+        const y = yy + Math.sin(x * 0.02 - t * dir * 2 + i) * amp;
+        if (x === c.x0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    for (let i = 0; i < 16; i++) {
+      const m = ((i * 97.3 + t * dir * 120) % span + span) % span;
+      const x = c.x0 + m, y = c.y0 + hash1(i * 3) * hh + Math.sin(t * 2 + i) * 6;
+      ctx.fillStyle = rgba('#dff3f7', 0.16);
+      ctx.beginPath(); ctx.arc(x, y, 1.6, 0, TAU); ctx.fill();
     }
     ctx.restore();
   }

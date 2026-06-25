@@ -636,11 +636,14 @@ export class Game {
 
   worldXform(ctx, view) { ctx.save(); ctx.scale(view.scale, view.scale); ctx.translate(-this.camX, 0); }
 
+  // live wave surge at a world x, so kelp etc. sway in time with the push
+  waveFlow(x) { return Math.sin(this.t * WAVE.freq + x * WAVE.swirl); }
+
   renderWorld(ctx, view) {
     this.worldXform(ctx, view);
     const L = this.camX - 140, Rr = this.camX + view.worldViewW + 140;
     const inView = (x) => x > L && x < Rr;
-    for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx, this.t);
+    for (const k of this.world.kelp) if (inView(k.x)) k.render(ctx, this.t, this.waveFlow(k.x));
     for (const c of this.world.currents) if (c.x1 > L && c.x0 < Rr) this.bg.drawCurrent(ctx, c, this.t);
     for (const a of this.world.anchors) if (inView(a.x)) a.render(ctx);
     for (const r of this.world.rocks) if (inView(r.x)) r.render(ctx);
@@ -710,6 +713,14 @@ export class Game {
   renderHUD(ctx, view) {
     const { w } = view; const pad = 14 * Math.max(1, view.scale * 0.7);
     const pl = this.player; if (!pl) return;
+    // pain: the screen edges redden when hurt, and pulse when near death
+    const lowHp = pl.alive && pl.hp <= 1;
+    const hf = clamp(pl.hurt, 0, 1) * 0.5 + (lowHp ? 0.16 + 0.1 * Math.sin(this.t * 6) : 0);
+    if (hf > 0.01) {
+      const vg = ctx.createRadialGradient(w / 2, view.h / 2, view.h * 0.32, w / 2, view.h / 2, view.h * 0.78);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, rgba(P.blood, clamp(hf, 0, 0.6)));
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, w, view.h);
+    }
     for (let i = 0; i < pl.maxHp; i++) this.drawHeart(ctx, pad + i * 30, pad + 12, 11, i < pl.hp);
     ctx.font = FONT(18); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     ctx.fillStyle = P.amber; ctx.beginPath(); ctx.ellipse(w - pad - 78, pad + 12, 6, 7.5, 0, 0, TAU); ctx.fill();

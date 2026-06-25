@@ -91,18 +91,33 @@ export function drawSunfish(ctx, R, t, st = {}) {
   ctx.restore();
 
   // a single dumb little dot eye — barely sentient, sits low and forward
+  const sad = clamp(st.sad ?? 0, 0, 1);
   const ex = 0.54 * R, ey = -0.14 * R, er = 0.075 * R;
   ctx.fillStyle = rgba(P.foam, 0.5);
   ctx.beginPath(); ctx.arc(ex, ey, er * 2.1, 0, TAU); ctx.fill();   // faint socket so the dot reads on any skin
   ctx.fillStyle = P.ink;
-  ctx.beginPath(); ctx.arc(ex + look * 0.02 * R, ey, er * (0.45 + 0.55 * blink), 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(ex + look * 0.02 * R, ey + sad * er * 0.3, er * (0.45 + 0.55 * blink) * (1 + sad * 0.4), 0, TAU); ctx.fill();
   ctx.fillStyle = rgba(P.foam, 0.9);
   ctx.beginPath(); ctx.arc(ex - er * 0.3, ey - er * 0.35, er * 0.4, 0, TAU); ctx.fill();
+  // worried sad eyebrow + a welling tear when things are going badly
+  if (sad > 0.05) {
+    ctx.strokeStyle = P.ink; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ex - er * 1.6, ey - er * 2.2); ctx.lineTo(ex + er * 1.2, ey - er * (3.0 + sad)); ctx.stroke();
+    if (sad > 0.45) {
+      const ty = ey + er * 2 + (0.5 + 0.5 * Math.sin(t * 2)) * er * 3;
+      ctx.fillStyle = rgba('#bfe9f0', 0.85);
+      ctx.beginPath(); ctx.ellipse(ex - er * 0.3, ty, er * 0.5, er * 0.85, 0, 0, TAU); ctx.fill();
+    }
+  }
 
-  // a permanently slightly-agape, gormless little mouth
+  // mouth: gormless little 'o' normally, a downturned frown when sad/hurt
   ctx.strokeStyle = P.ink; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
-  const mo = 0.045 * R + mouth * 0.06 * R;
-  ctx.beginPath(); ctx.ellipse(0.95 * R, 0.24 * R, mo, mo * 1.2, 0, 0, TAU); ctx.stroke();
+  if (sad > 0.4) {
+    ctx.beginPath(); ctx.arc(0.95 * R, 0.36 * R, 0.12 * R, Math.PI * 1.18, Math.PI * 1.82); ctx.stroke();
+  } else {
+    const mo = 0.045 * R + mouth * 0.06 * R;
+    ctx.beginPath(); ctx.ellipse(0.95 * R, 0.24 * R, mo, mo * 1.2, 0, 0, TAU); ctx.stroke();
+  }
 
   if (sk.accessory) drawAccessory(ctx, R, t, sk.accessory, ex, ey);
 }
@@ -236,59 +251,50 @@ export function drawSeal(ctx, R, t, st = {}) {
 export function drawShark(ctx, R, t, st = {}) {
   const mouth = st.mouth ?? 0;       // 0 closed .. 1 gaping
   const col = st.color || P.shark;   // blue shark passes its own hue
-  const swim = Math.sin(t * 5) * 0.05;
-  const fill = ctx.createLinearGradient(0, -R, 0, R);
-  fill.addColorStop(0, mixHex(col, '#cfe0e6', 0.25));
-  fill.addColorStop(0.55, col);
-  fill.addColorStop(1, mixHex(col, '#e9eef0', 0.6)); // pale belly
-  // tail fin
+  const dark = mixHex(col, '#0a1822', 0.45);
+  const pale = mixHex(col, '#f1f5f6', 0.7);
+  const swim = Math.sin(t * 5) * 0.045;
+  // heterocercal caudal — long upper lobe, shorter lower
   sketchShape(ctx, [
-    { x: -1.2 * R, y: 0 }, { x: -1.85 * R, y: -0.7 * R }, { x: -1.55 * R, y: -0.05 * R },
-    { x: -1.8 * R, y: 0.5 * R }, { x: -1.25 * R, y: 0.25 * R },
-  ], { fill: col, lineW: 2.6, wobble: 2.2, key: 81 });
-  // dorsal fin (the famous one)
-  sketchShape(ctx, [
-    { x: -0.05 * R, y: -0.55 * R }, { x: 0.05 * R + swim * R, y: -1.25 * R },
-    { x: 0.4 * R, y: -0.5 * R },
-  ], { fill: mixHex(col, '#000', 0.12), lineW: 2.4, wobble: 2.2, key: 82 });
-  // torpedo body
+    { x: -1.25 * R, y: 0 }, { x: -2.05 * R, y: -0.85 * R }, { x: -1.7 * R, y: -0.1 * R },
+    { x: -1.75 * R, y: 0.06 * R }, { x: -1.95 * R, y: 0.5 * R }, { x: -1.3 * R, y: 0.22 * R },
+  ], { fill: col, lineW: 2.4, wobble: 1.3, key: 81 });
+  // tall raked first dorsal + tiny second dorsal
+  sketchShape(ctx, [{ x: 0.0, y: -0.5 * R }, { x: 0.18 * R + swim * R, y: -1.3 * R }, { x: 0.5 * R, y: -0.46 * R }], { fill: dark, lineW: 2.2, wobble: 1.2, key: 82 });
+  sketchShape(ctx, [{ x: -0.8 * R, y: -0.4 * R }, { x: -0.7 * R, y: -0.62 * R }, { x: -0.55 * R, y: -0.36 * R }], { fill: dark, lineW: 1.6, wobble: 1, key: 85 });
+  // streamlined body with a pointed snout
   const body = [
-    { x: 1.32, y: 0.06 }, { x: 1.0, y: -0.3 }, { x: 0.4, y: -0.5 },
-    { x: -0.4, y: -0.5 }, { x: -1.05, y: -0.32 }, { x: -1.12, y: 0.05 + swim },
-    { x: -1.0, y: 0.36 }, { x: -0.3, y: 0.52 }, { x: 0.5, y: 0.5 }, { x: 1.05, y: 0.34 },
+    { x: 1.42, y: 0.0 }, { x: 1.05, y: -0.24 }, { x: 0.45, y: -0.42 }, { x: -0.4, y: -0.44 },
+    { x: -1.05, y: -0.28 }, { x: -1.18, y: 0.02 + swim }, { x: -1.02, y: 0.32 },
+    { x: -0.35, y: 0.46 }, { x: 0.5, y: 0.44 }, { x: 1.08, y: 0.26 },
   ].map((p) => ({ x: p.x * R, y: p.y * R }));
-  sketchShape(ctx, body, { fill, lineW: 3.2, wobble: 1.9, key: 83 });
-  // pectoral fin
-  ctx.save(); ctx.translate(0.45 * R, 0.42 * R); ctx.rotate(0.6);
-  sketchShape(ctx, [{ x: 0, y: 0 }, { x: 0.5 * R, y: 0.3 * R }, { x: 0.1 * R, y: 0.5 * R }],
-    { fill: mixHex(col, '#000', 0.1), lineW: 2, wobble: 1.7, key: 84 });
+  sketchShape(ctx, body, { fill: col, lineW: 3, wobble: 1.4, key: 83 });
+  // countershading: dark back over pale belly, clipped to the body
+  ctx.save(); ctx.beginPath(); sketchShape(ctx, body, { fill: null, outline: null }); ctx.clip();
+  ctx.fillStyle = rgba(dark, 0.9); ctx.beginPath();
+  ctx.moveTo(-1.3 * R, -0.6 * R); ctx.lineTo(1.5 * R, -0.6 * R); ctx.lineTo(1.5 * R, -0.02 * R);
+  ctx.quadraticCurveTo(0, 0.12 * R, -1.3 * R, -0.05 * R); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = rgba(pale, 0.95); ctx.beginPath();
+  ctx.moveTo(-1.3 * R, 0.6 * R); ctx.lineTo(1.5 * R, 0.6 * R); ctx.lineTo(1.5 * R, 0.14 * R);
+  ctx.quadraticCurveTo(0, 0.26 * R, -1.3 * R, 0.12 * R); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // very long scythe pectoral fin
+  ctx.save(); ctx.translate(0.5 * R, 0.36 * R); ctx.rotate(0.5 + swim);
+  sketchShape(ctx, [{ x: 0, y: 0 }, { x: 0.95 * R, y: 0.32 * R }, { x: 0.88 * R, y: 0.5 * R }, { x: 0.05 * R, y: 0.32 * R }],
+    { fill: mixHex(col, '#000', 0.12), lineW: 2, wobble: 1.2, key: 84 });
   ctx.restore();
   // gill slits
   ctx.strokeStyle = rgba(P.ink, 0.4); ctx.lineWidth = 2;
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath(); ctx.moveTo((0.55 - i * 0.08) * R, -0.18 * R);
-    ctx.quadraticCurveTo((0.5 - i * 0.08) * R, 0, (0.55 - i * 0.08) * R, 0.18 * R); ctx.stroke();
-  }
-  // gaping mouth + teeth
-  const m = mouth;
-  ctx.fillStyle = '#2a0c12';
-  ctx.beginPath();
-  ctx.moveTo(0.78 * R, 0.18 * R);
-  ctx.quadraticCurveTo(1.34 * R, 0.16 * R, 1.32 * R, 0.34 * R + m * 0.2 * R);
-  ctx.quadraticCurveTo(1.0 * R, 0.5 * R + m * 0.22 * R, 0.74 * R, 0.36 * R);
-  ctx.closePath(); ctx.fill();
+  for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo((0.62 - i * 0.08) * R, -0.18 * R); ctx.quadraticCurveTo((0.57 - i * 0.08) * R, 0, (0.62 - i * 0.08) * R, 0.2 * R); ctx.stroke(); }
+  // underslung toothy mouth
+  ctx.fillStyle = '#2a0c12'; ctx.beginPath();
+  ctx.moveTo(1.05 * R, 0.2 * R); ctx.quadraticCurveTo(1.42 * R, 0.2 * R, 1.4 * R, 0.34 * R + mouth * 0.18 * R);
+  ctx.quadraticCurveTo(1.15 * R, 0.46 * R + mouth * 0.2 * R, 1.0 * R, 0.32 * R); ctx.closePath(); ctx.fill();
   ctx.fillStyle = P.foam;
-  for (let i = 0; i < 5; i++) {
-    const tx = (0.86 + i * 0.1) * R;
-    ctx.beginPath();
-    ctx.moveTo(tx, 0.22 * R); ctx.lineTo(tx + 0.03 * R, 0.32 * R + m * 0.16 * R); ctx.lineTo(tx + 0.06 * R, 0.22 * R);
-    ctx.fill();
-  }
-  // cold little eye
-  ctx.fillStyle = P.ink;
-  ctx.beginPath(); ctx.arc(0.78 * R, -0.08 * R, 0.06 * R, 0, TAU); ctx.fill();
-  ctx.strokeStyle = P.ink; ctx.lineWidth = 1.6;
-  ctx.beginPath(); ctx.moveTo(0.7 * R, -0.16 * R); ctx.lineTo(0.9 * R, -0.12 * R); ctx.stroke();
+  for (let i = 0; i < 5; i++) { const tx = (1.08 + i * 0.07) * R; ctx.beginPath(); ctx.moveTo(tx, 0.24 * R); ctx.lineTo(tx + 0.025 * R, 0.32 * R + mouth * 0.14 * R); ctx.lineTo(tx + 0.05 * R, 0.24 * R); ctx.fill(); }
+  // dark eye with a cold glint
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.92 * R, -0.06 * R, 0.07 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = rgba('#fff', 0.5); ctx.beginPath(); ctx.arc(0.9 * R, -0.09 * R, 0.025 * R, 0, TAU); ctx.fill();
 }
 
 // -------------------------------------------------------------- the barracuda
@@ -568,25 +574,31 @@ export function drawAnchor(ctx, R, t) {
   ctx.stroke();
 }
 
-// ----------------------------------------------------------------- the rocks
+// ------------------------------------------------------ natural sea stones
 export function drawRock(ctx, R, seed) {
-  const n = 2 + (Math.floor(hash1(seed) * 3));
+  const n = 2 + Math.floor(hash1(seed) * 2);
   for (let i = 0; i < n; i++) {
-    const ox = (hash1(seed + i * 9) - 0.5) * R * 1.1;
-    const oy = (1 - hash1(seed + i * 5) * 0.5) * R * 0.4;
-    const rr = R * (0.5 + hash1(seed + i * 7) * 0.5);
-    const fill = ctx.createLinearGradient(ox, oy - rr, ox, oy + rr);
-    fill.addColorStop(0, P.hazardLight);
-    fill.addColorStop(1, P.hazardDark);
-    sketchShape(ctx, blobPts(ox, oy, rr, rr * 0.82, 9, 0.32, seed + i * 31),
-      { fill, lineW: 3, wobble: 2.2, key: seed + i * 13 });
-    for (let b = 0; b < 4; b++) {
-      const a = hash1(seed + i + b * 3) * TAU, br = rr * 0.6 * hash1(seed + b);
-      ctx.fillStyle = rgba(b % 2 ? '#6f8a5a' : P.hazardDark, 0.6);
-      ctx.beginPath();
-      ctx.arc(ox + Math.cos(a) * br, oy + Math.sin(a) * br * 0.7, rr * 0.08, 0, TAU);
-      ctx.fill();
+    const ox = (hash1(seed + i * 9) - 0.5) * R * 0.9;
+    const oy = (1 - hash1(seed + i * 5) * 0.4) * R * 0.32;
+    const rr = R * (0.55 + hash1(seed + i * 7) * 0.5);
+    const top = mixHex('#9fb0bb', '#c2cdd3', hash1(seed + i));       // cool weathered granite
+    const bot = mixHex('#41535e', '#5a6f7b', hash1(seed + i * 2));
+    const g = ctx.createLinearGradient(ox, oy - rr, ox, oy + rr);
+    g.addColorStop(0, top); g.addColorStop(1, bot);
+    const shape = blobPts(ox, oy, rr, rr * 0.74, 8, 0.2, seed + i * 31);
+    sketchShape(ctx, shape, { fill: g, lineW: 2.4, wobble: 1.4, key: seed + i * 13 });
+    ctx.save(); ctx.beginPath(); sketchShape(ctx, shape, { fill: null, outline: null }); ctx.clip();
+    ctx.strokeStyle = rgba('#2c3940', 0.22); ctx.lineWidth = 2;           // strata
+    for (let s = 0; s < 3; s++) {
+      const yy = oy - rr * 0.34 + s * rr * 0.32;
+      ctx.beginPath(); ctx.moveTo(ox - rr, yy + (hash1(seed + s) - 0.5) * 10);
+      ctx.quadraticCurveTo(ox, yy - 6, ox + rr, yy + (hash1(seed + s * 2) - 0.5) * 10); ctx.stroke();
     }
+    ctx.fillStyle = rgba('#5f8a5a', 0.5);                                  // moss
+    for (let m = 0; m < 6; m++) { const a = -Math.PI / 2 + (hash1(seed + m * 3) - 0.5) * 1.7; ctx.beginPath(); ctx.arc(ox + Math.cos(a) * rr * 0.72, oy + Math.sin(a) * rr * 0.55, rr * (0.07 + hash1(seed + m) * 0.05), 0, TAU); ctx.fill(); }
+    ctx.restore();
+    ctx.fillStyle = rgba('#ffffff', 0.12);                                 // top sheen
+    ctx.beginPath(); ctx.ellipse(ox - rr * 0.25, oy - rr * 0.5, rr * 0.4, rr * 0.16, -0.3, 0, TAU); ctx.fill();
   }
 }
 
@@ -611,26 +623,32 @@ export function drawCoral(ctx, R, seed) {
 }
 
 // ------------------------------------------------------------------ the kelp
-export function drawKelp(ctx, H, t, seed) {
-  const segs = 7;
-  const sway = 0.5 + hash1(seed) * 0.5;
+// `flow` (≈ -1..1) is the live wave surge from the game, so the whole bed
+// sways together; tips lag and sway more than the holdfast for a fluid feel.
+export function drawKelp(ctx, H, t, seed, flow = 0) {
+  const segs = 9;
+  const own = 0.6 + hash1(seed) * 0.5;
   const pts = [];
   for (let i = 0; i <= segs; i++) {
     const f = i / segs;
-    const x = Math.sin(t * sway + f * 3 + seed) * f * 0.22 * H;
-    pts.push({ x, y: -f * H });
+    const bend = (flow * 0.7 + Math.sin(t * own + seed + f * 2.2) * 0.5) * f * f;
+    pts.push({ x: bend * 0.34 * H, y: -f * H });
   }
-  ctx.strokeStyle = mixHex('#3f6f47', P.ink, 0.4); ctx.lineWidth = 6;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-  for (const p of pts) ctx.lineTo(p.x, p.y); ctx.stroke();
-  for (let i = 1; i < pts.length; i++) {
+  const grad = ctx.createLinearGradient(0, 0, 0, -H);
+  grad.addColorStop(0, mixHex('#2f5d3a', P.ink, 0.3)); grad.addColorStop(1, '#5aa06a');
+  ctx.strokeStyle = grad; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; ctx.quadraticCurveTo(a.x, (a.y + b.y) / 2, b.x, b.y); }
+  ctx.stroke();
+  for (let i = 2; i < pts.length; i++) {       // translucent blades
     const p = pts[i], side = i % 2 ? 1 : -1;
-    ctx.save(); ctx.translate(p.x, p.y);
-    sketchShape(ctx, blobPts(side * 0.12 * H, 0, 0.18 * H, 0.05 * H, 7, 0.1, seed + i),
-      { fill: rgba('#4f8255', 0.92), lineW: 1.6, wobble: 1.5, key: seed + i * 3 });
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(side * 0.5 + flow * 0.3);
+    ctx.fillStyle = rgba(mixHex('#4f8255', '#7fc98a', hash1(seed + i)), 0.9);
+    ctx.beginPath(); ctx.ellipse(side * 0.14 * H, 0, 0.2 * H, 0.045 * H, 0, 0, TAU); ctx.fill();
     ctx.restore();
   }
+  ctx.fillStyle = rgba('#9ed6a0', 0.9);          // gas-bladder bulbs near the tips
+  for (let i = pts.length - 3; i < pts.length; i++) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x, p.y, 0.03 * H, 0, TAU); ctx.fill(); }
 }
 
 // -------------------------------------------------------------- the jellyfish
@@ -729,16 +747,23 @@ function fan(R, hScale, up) {
 // drawn already clipped to the body, so a circle near the edge reads as a
 // scooped-out "cookie" bite missing from the silhouette.
 function drawWound(ctx, R, w) {
-  const br = w.r * R;
   const cx = Math.cos(w.a) * 0.66 * R, cy = Math.sin(w.a) * 0.52 * R;
-  ctx.fillStyle = rgba(P.bloodDark, 0.95);
-  ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.fill();
-  ctx.fillStyle = rgba('#5a160f', 0.95);
-  ctx.beginPath(); ctx.arc(cx, cy, br * 0.66, 0, TAU); ctx.fill();
-  ctx.strokeStyle = rgba(P.blood, 0.85); ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.stroke();
-  ctx.fillStyle = rgba(P.blood, 0.5);
-  ctx.beginPath(); ctx.arc(cx, cy + br * 0.9, br * 0.3, 0, TAU); ctx.fill();
+  if (w.cut) {                                    // a slashing gash
+    const len = (0.3 + w.r) * R, ang = w.a + 1.2;
+    const dx = Math.cos(ang) * len * 0.5, dy = Math.sin(ang) * len * 0.5;
+    ctx.strokeStyle = rgba('#5a160f', 0.95); ctx.lineWidth = R * 0.07; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
+    ctx.strokeStyle = rgba(P.blood, 0.8); ctx.lineWidth = R * 0.03;
+    ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
+  } else {                                         // a round cookiecutter scoop
+    const br = w.r * R;
+    ctx.fillStyle = rgba(P.bloodDark, 0.95); ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.fill();
+    ctx.fillStyle = rgba('#5a160f', 0.95); ctx.beginPath(); ctx.arc(cx, cy, br * 0.66, 0, TAU); ctx.fill();
+    ctx.strokeStyle = rgba(P.blood, 0.85); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, br, 0, TAU); ctx.stroke();
+  }
+  // a trickle of blood running down from the wound
+  ctx.strokeStyle = rgba(P.blood, 0.45); ctx.lineWidth = R * 0.035; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(cx + R * 0.03, cy + R * 0.18, cx - R * 0.02, cy + R * 0.34); ctx.stroke();
 }
 function drawParasites(ctx, R, n) {
   for (let i = 0; i < Math.min(n, 6); i++) {
@@ -752,18 +777,34 @@ function drawParasites(ctx, R, n) {
 
 // ----------------------------------------------------------------- swordfish
 export function drawSwordfish(ctx, R, t, st = {}) {
-  const swim = Math.sin(t * 7) * 0.05;
-  const fill = ctx.createLinearGradient(0, -R * 0.5, 0, R * 0.5);
-  fill.addColorStop(0, '#5b7d9a'); fill.addColorStop(1, '#2f4a5e');
-  sketchShape(ctx, [{ x: -1.3 * R, y: 0 }, { x: -1.8 * R, y: -0.5 * R }, { x: -1.5 * R, y: 0 }, { x: -1.8 * R, y: 0.5 * R }], { fill: '#2f4a5e', lineW: 2, wobble: 1.8, key: 101 });
-  const body = [{ x: 1.0, y: 0 }, { x: 0.5, y: -0.32 }, { x: -0.4, y: -0.38 }, { x: -1.2, y: -0.18 + swim }, { x: -1.2, y: 0.18 }, { x: -0.4, y: 0.38 }, { x: 0.5, y: 0.32 }].map((p) => ({ x: p.x * R, y: p.y * R }));
-  sketchShape(ctx, body, { fill, lineW: 2.8, wobble: 1.7, key: 102 });
-  sketchShape(ctx, [{ x: -0.1 * R, y: -0.34 * R }, { x: 0.1 * R, y: -0.82 * R }, { x: 0.35 * R, y: -0.3 * R }], { fill: '#2f4a5e', lineW: 2, wobble: 1.6, key: 103 });
-  // the long sword bill
-  ctx.strokeStyle = '#9fb6c4'; ctx.lineWidth = R * 0.12; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0.9 * R, 0.02 * R); ctx.lineTo(2.0 * R, -0.02 * R); ctx.stroke();
-  ctx.fillStyle = P.foam; ctx.beginPath(); ctx.arc(0.68 * R, -0.12 * R, 0.08 * R, 0, TAU); ctx.fill();
-  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.69 * R, -0.12 * R, 0.04 * R, 0, TAU); ctx.fill();
+  const swim = Math.sin(t * 6) * 0.04;
+  const dark = '#22425a', mid = '#4a6f88', pale = '#cdd9df';
+  // crescent (lunate) tail
+  sketchShape(ctx, [
+    { x: -1.35 * R, y: 0 }, { x: -1.98 * R, y: -0.62 * R }, { x: -1.58 * R, y: -0.06 * R },
+    { x: -1.62 * R, y: 0.06 * R }, { x: -1.98 * R, y: 0.62 * R },
+  ], { fill: dark, lineW: 2, wobble: 1.1, key: 101 });
+  // streamlined fusiform body
+  const body = [
+    { x: 0.95, y: 0 }, { x: 0.55, y: -0.24 }, { x: -0.2, y: -0.34 }, { x: -0.9, y: -0.2 + swim },
+    { x: -1.3, y: -0.05 }, { x: -1.3, y: 0.05 }, { x: -0.9, y: 0.2 + swim }, { x: -0.2, y: 0.32 }, { x: 0.55, y: 0.22 },
+  ].map((p) => ({ x: p.x * R, y: p.y * R }));
+  sketchShape(ctx, body, { fill: mid, lineW: 2.4, wobble: 1.1, key: 102 });
+  // countershading
+  ctx.save(); ctx.beginPath(); sketchShape(ctx, body, { fill: null, outline: null }); ctx.clip();
+  ctx.fillStyle = rgba(dark, 0.85); ctx.beginPath(); ctx.moveTo(-1.3 * R, -0.4 * R); ctx.lineTo(1 * R, -0.4 * R); ctx.lineTo(1 * R, -0.02 * R); ctx.quadraticCurveTo(-0.3 * R, 0.06 * R, -1.3 * R, -0.04 * R); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = rgba(pale, 0.92); ctx.beginPath(); ctx.moveTo(-1.3 * R, 0.4 * R); ctx.lineTo(1 * R, 0.4 * R); ctx.lineTo(1 * R, 0.12 * R); ctx.quadraticCurveTo(-0.3 * R, 0.2 * R, -1.3 * R, 0.1 * R); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // tall sickle first dorsal + small pelvic
+  sketchShape(ctx, [{ x: -0.05 * R, y: -0.3 * R }, { x: 0.06 * R, y: -0.98 * R }, { x: 0.02 * R, y: -0.5 * R }, { x: 0.3 * R, y: -0.28 * R }], { fill: dark, lineW: 1.8, wobble: 1, key: 103 });
+  sketchShape(ctx, [{ x: -0.2 * R, y: 0.3 * R }, { x: -0.1 * R, y: 0.62 * R }, { x: 0.12 * R, y: 0.32 * R }], { fill: dark, lineW: 1.6, wobble: 1, key: 104 });
+  // the long rapier bill
+  ctx.fillStyle = '#9fb6c4'; ctx.strokeStyle = P.ink; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(0.9 * R, -0.05 * R); ctx.lineTo(2.18 * R, -0.01 * R); ctx.lineTo(0.9 * R, 0.06 * R); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // big dark eye near the bill base
+  ctx.fillStyle = P.foam; ctx.beginPath(); ctx.arc(0.66 * R, -0.1 * R, 0.09 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.67 * R, -0.1 * R, 0.055 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = rgba('#fff', 0.6); ctx.beginPath(); ctx.arc(0.64 * R, -0.13 * R, 0.02 * R, 0, TAU); ctx.fill();
 }
 
 // ------------------------------------------------------- cookiecutter shark
@@ -854,4 +895,36 @@ export function drawBooster(ctx, R, t, type) {
     ctx.fillStyle = rgba(col, 0.3); ctx.fill();
     ctx.fillStyle = rgba('#fff', 0.6); ctx.beginPath(); ctx.arc(-0.15 * R, -0.15 * R, 0.1 * R, 0, TAU); ctx.fill();
   }
+}
+
+// ----------------------------------- background ambient life (silhouettes)
+// Caller sets fillStyle + globalAlpha; these just lay down a shape facing +x.
+export function drawTuna(ctx, R, t, phase = 0) {
+  const wig = Math.sin(t * 7 + phase) * 0.14;
+  ctx.beginPath();
+  ctx.moveTo(R, 0);
+  ctx.quadraticCurveTo(0.1 * R, -0.55 * R, -0.85 * R, wig * R);
+  ctx.quadraticCurveTo(0.1 * R, 0.55 * R, R, 0);
+  ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-0.8 * R, wig * R); ctx.lineTo(-1.3 * R, -0.45 * R + wig * R); ctx.lineTo(-1.05 * R, wig * R); ctx.lineTo(-1.3 * R, 0.45 * R + wig * R); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0.15 * R, -0.32 * R); ctx.lineTo(0.32 * R, -0.6 * R); ctx.lineTo(0.42 * R, -0.3 * R); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0.05 * R, 0.3 * R); ctx.lineTo(0.2 * R, 0.55 * R); ctx.lineTo(0.3 * R, 0.28 * R); ctx.closePath(); ctx.fill();
+}
+
+export function drawWhale(ctx, R, t) {
+  const wig = Math.sin(t * 0.8) * 0.05;
+  ctx.beginPath();
+  ctx.moveTo(1.05 * R, 0.0);
+  ctx.quadraticCurveTo(0.5 * R, -0.42 * R, -0.5 * R, -0.34 * R);
+  ctx.quadraticCurveTo(-1.1 * R, -0.28 * R, -1.5 * R, -0.5 * R + wig * R);
+  ctx.lineTo(-1.78 * R, -0.66 * R);
+  ctx.quadraticCurveTo(-1.5 * R, -0.2 * R, -1.5 * R, 0);
+  ctx.quadraticCurveTo(-1.5 * R, 0.2 * R, -1.78 * R, 0.5 * R);
+  ctx.lineTo(-1.5 * R, 0.34 * R - wig * R);
+  ctx.quadraticCurveTo(-0.9 * R, 0.5 * R, 0.2 * R, 0.46 * R);
+  ctx.quadraticCurveTo(0.75 * R, 0.4 * R, 1.05 * R, 0.0);
+  ctx.closePath(); ctx.fill();
+  // pectoral flipper + a small dorsal hump
+  ctx.beginPath(); ctx.moveTo(0.3 * R, 0.28 * R); ctx.quadraticCurveTo(0.15 * R, 0.74 * R, -0.18 * R, 0.62 * R); ctx.quadraticCurveTo(0.02 * R, 0.4 * R, 0.3 * R, 0.28 * R); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-0.55 * R, -0.32 * R); ctx.quadraticCurveTo(-0.4 * R, -0.5 * R, -0.25 * R, -0.32 * R); ctx.fill();
 }

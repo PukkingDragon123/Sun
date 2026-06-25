@@ -81,9 +81,13 @@ resolution-independent world units, DPR-capped responsive canvas.
 
 The "polished hand-drawn" look is **rendered procedurally** — wobbly *boiling*
 ink outlines, soft watercolor washes, paper grain and drifting godrays — so the
-game ships with zero asset files. Audio is synthesized live via the Web Audio
-API. See `design/` for the design plan, the art/audio manifest, and the frozen
-numeric thresholds.
+game ships with zero asset files. Layered surface swells and flowing-streamline
+currents keep the water fluid; kelp sways in time with the wave surge; a school
+of **tuna** and the occasional **whale** drift through the deep background;
+predators are drawn with realistic countershading and fins; and the sunfish
+accrues bleeding bite-wounds and gets visibly sadder the more it's hurt. Audio
+is synthesized live via the Web Audio API. See `design/` for the design plan,
+the art/audio manifest, and the frozen numeric thresholds.
 
 ```
 index.html        page shell, boots js/main.js
