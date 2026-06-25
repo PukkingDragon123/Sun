@@ -68,8 +68,8 @@ export class Player {
     this.invuln = COMBAT.hitIFrames * (1 + this.armorLevel * 0.28);
     this.hurt = 1; this.vx += kx; this.vy += ky;
     audio.sfx('hurt');
-    for (let i = 0; i < 14; i++) particles.spawn(this.x, this.y, 'blood', (Math.random() - 0.5) * 240, (Math.random() - 0.5) * 240);
-    for (let i = 0; i < 8; i++) particles.spawn(this.x, this.y, 'inkpuff', (Math.random() - 0.5) * 180, (Math.random() - 0.5) * 180);
+    for (let i = 0; i < 16; i++) particles.spawn(this.x, this.y, 'blood', (Math.random() - 0.5) * 240, (Math.random() - 0.5) * 240);
+    particles.burst(this.x, this.y, 'gore', 4, 70);
     if (Math.random() < 0.5) this.addWound(true);   // a fresh cut to remember it by
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }
     return true;
@@ -742,8 +742,8 @@ export class Particles {
   spawn(x, y, kind, vx = 0, vy = 0, opts = {}) {
     const pr = this.pool[this.head]; this.head = (this.head + 1) % this.max;
     pr.x = x; pr.y = y; pr.vx = vx; pr.vy = vy; pr.kind = kind;
-    pr.life = pr.maxLife = opts.life ?? (kind === 'bubble' ? 2.4 : kind === 'ring' ? 0.5 : kind === 'blood' ? 1.4 : 0.8);
-    pr.size = opts.size ?? (kind === 'bubble' ? 2 + Math.random() * 4 : kind === 'ring' ? 10 : kind === 'blood' ? 2 + Math.random() * 5 : 3 + Math.random() * 4);
+    pr.life = pr.maxLife = opts.life ?? (kind === 'bubble' ? 2.4 : kind === 'ring' ? 0.5 : kind === 'blood' ? 1.9 : kind === 'gore' ? 2.2 : 0.8);
+    pr.size = opts.size ?? (kind === 'bubble' ? 2 + Math.random() * 4 : kind === 'ring' ? 10 : kind === 'blood' ? 2 + Math.random() * 5 : kind === 'gore' ? 7 + Math.random() * 9 : 3 + Math.random() * 4);
     pr.color = opts.color ?? null; pr.seed = Math.random() * 100;
   }
   burst(x, y, kind, n, spd, opts) {
@@ -755,7 +755,8 @@ export class Particles {
       pr.life -= dt; pr.x += pr.vx * dt; pr.y += pr.vy * dt;
       if (pr.kind === 'bubble') { pr.vy -= 26 * dt; pr.x += Math.sin((pr.maxLife - pr.life) * 6 + pr.seed) * 14 * dt; pr.vx *= 0.98; }
       else if (pr.kind === 'inkpuff') { pr.vx *= 0.9; pr.vy *= 0.9; }
-      else if (pr.kind === 'blood') { pr.vy += 36 * dt; pr.vx *= 0.94; pr.vy *= 0.98; }
+      else if (pr.kind === 'blood') { pr.vy += 26 * dt; pr.vx *= 0.95; pr.vy *= 0.99; }
+      else if (pr.kind === 'gore') { pr.vx *= 0.92; pr.vy *= 0.95; pr.size += 22 * dt; }
       else if (pr.kind === 'sparkle') { pr.vy += 40 * dt; pr.vx *= 0.96; }
       else if (pr.kind === 'egg') { pr.vy -= 8 * dt; pr.vx *= 0.99; }
       else if (pr.kind === 'foam') { pr.vy += 60 * dt; }
@@ -769,7 +770,8 @@ export class Particles {
       const a = clamp(pr.life / pr.maxLife, 0, 1);
       if (pr.kind === 'bubble') { ctx.strokeStyle = rgba('#dff3f7', a * 0.7); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.stroke(); }
       else if (pr.kind === 'inkpuff') { ctx.fillStyle = rgba('#16302f', a * 0.5); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size * (1.4 - a), 0, TAU); ctx.fill(); }
-      else if (pr.kind === 'blood') { ctx.fillStyle = rgba(a > 0.6 ? P.blood : P.bloodDark, a * 0.85); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size * (1.3 - a * 0.3), 0, TAU); ctx.fill(); }
+      else if (pr.kind === 'blood') { const ea = a * a; ctx.fillStyle = rgba(a > 0.55 ? P.blood : P.bloodDark, ea * 0.9); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size * (1.25 - a * 0.25), 0, TAU); ctx.fill(); }
+      else if (pr.kind === 'gore') { ctx.fillStyle = rgba(P.bloodDark, a * 0.28); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
       else if (pr.kind === 'sparkle') { ctx.fillStyle = rgba(pr.color || '#ffd97a', a); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size * a, 0, TAU); ctx.fill(); }
       else if (pr.kind === 'egg') { ctx.save(); ctx.translate(pr.x, pr.y); ctx.globalAlpha = a; drawEgg(ctx, pr.size); ctx.restore(); ctx.globalAlpha = 1; }
       else if (pr.kind === 'foam') { ctx.fillStyle = rgba('#eaf6f7', a * 0.8); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }

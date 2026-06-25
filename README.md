@@ -73,8 +73,10 @@ eggs two ways:
 - *Tide-Pool Outfitters* — permanent upgrades: more hearts, faster swimming, the
   dash, slippery skin, lucky roe, a gill **magnet**, thick hide, a **head start**
   (begin further along), and **Second Wind** (a free revive).
-- *Mystery Clams* — loot boxes that drop one of **16 skins** across four
-  rarities (dupes refund eggs). Dress your useless fish in the **Wardrobe**.
+- *Mystery Clams* — loot boxes that always hand you a **skin you don't own yet**
+  (16 skins across four rarities) until the set is complete; after that, dupes
+  refund eggs. Dress your useless fish in the **Wardrobe**, and admire it
+  swimming in the calm of the upgrade screen.
 
 Runs are seeded, so each crossing is freshly generated.
 

@@ -22,6 +22,7 @@ import { STR } from './strings.js';
 const SAVE_KEY = 'sunfish.useless.v2';
 const FONT = (s, w = '700') => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
 const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
+const UPGRADE_ICON = { vitality: '♥', grace: '✦', dash: '»', slip: '◆', roe: '●', magnet: '✚', armor: '▰', headstart: '★', wind: '↺' };
 
 function freshSave() {
   return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
@@ -469,8 +470,8 @@ export class Game {
     const msgs = STR.deaths;
     const byCause = { caught: 2, squid: 10 };
     this.deathMsg = cause in byCause ? msgs[byCause[cause]] : msgs[Math.floor(Math.random() * msgs.length)];
-    this.particles.burst(this.player.x, this.player.y, 'blood', 26, 260);
-    this.particles.burst(this.player.x, this.player.y, 'inkpuff', 14, 180);
+    this.particles.burst(this.player.x, this.player.y, 'blood', 32, 260);
+    this.particles.burst(this.player.x, this.player.y, 'gore', 9, 90);
     Audio.sea(false);
     this.reviveCost = Math.round(25 + this.checkpointRegionIdx * 22);
     this.canRevive = (this.stats().wind > 0 && !this.usedWind) || this.save.eggs >= this.reviveCost;
@@ -496,8 +497,8 @@ export class Game {
   // intro: a hopeful egg hatches, you swim with your sibling, the sea takes them
   updateIntro(dt) {
     this.introT += dt;
-    if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 7.6);
-    if (this.introT >= 8.2) { Audio.unlock(); this.beginPlay(); }
+    if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 12.4);
+    if (this.introT >= 13.2) { Audio.unlock(); this.beginPlay(); }
   }
 
   bankRun() {
@@ -595,11 +596,17 @@ export class Game {
     let total = 0; for (const k of keys) total += RARITY[k].weight;
     let r = Math.random() * total, rar = keys[0];
     for (const k of keys) { r -= RARITY[k].weight; if (r <= 0) { rar = k; break; } }
-    const pool = SKINS.filter((s) => s.rarity === rar);
+    // never award the starter Moonfish; always prefer a skin you don't own yet,
+    // so every clam gives something NEW until the wardrobe is complete.
+    const lootable = SKINS.filter((s) => s.id !== DEFAULT_SKIN);
+    let pool = lootable.filter((s) => s.rarity === rar && !this.owns(s.id));
+    if (!pool.length) pool = lootable.filter((s) => !this.owns(s.id));     // any new skin, any rarity
+    let dupe = false;
+    if (!pool.length) { pool = lootable.filter((s) => s.rarity === rar); dupe = true; }  // collection complete
+    if (!pool.length) pool = lootable;
     const skin = pool[Math.floor(Math.random() * pool.length)];
-    const dupe = this.owns(skin.id);
     let refund = 0;
-    if (dupe) { refund = RARITY[rar].refund; this.save.eggs += refund; }
+    if (this.owns(skin.id)) { dupe = true; refund = RARITY[skin.rarity].refund; this.save.eggs += refund; }
     else this.save.skins.push(skin.id);
     return { skin, dupe, refund };
   }
@@ -712,11 +719,13 @@ export class Game {
 
   renderMenuWorld(ctx, view) {
     this.worldXform(ctx, { ...view });
-    const cx = this.camX + view.worldViewW * 0.5;
-    const cy = REF_H * 0.52 + Math.sin(this.menuFlap * 0.7) * 18;
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.sin(this.menuFlap * 0.5) * 0.06);
-    drawSunfish(ctx, 64, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj() });
-    ctx.restore();
+    if (this.state === 'menu') {
+      const cx = this.camX + view.worldViewW * 0.5;
+      const cy = REF_H * 0.52 + Math.sin(this.menuFlap * 0.7) * 18;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.sin(this.menuFlap * 0.5) * 0.06);
+      drawSunfish(ctx, 64, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj() });
+      ctx.restore();
+    }
     this.particles.render(ctx);
     ctx.restore();
   }
@@ -726,27 +735,47 @@ export class Game {
   renderIntro(ctx, view) {
     const { w, h } = view; const S = view.scale; const T = this.introT; const cx = w / 2, cy = h * 0.46;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    if (T < 3.4) {
-      const hatch = clamp((T - 2.0) / 1.4, 0, 1);
-      ctx.save(); ctx.translate(cx, cy + Math.sin(T * 1.5) * 6 * S); ctx.rotate(Math.sin(T * 5) * 0.05 * (1 - hatch));
-      drawEgg(ctx, 46 * S * (1 - hatch * 0.55));
-      if (hatch > 0.25) { ctx.save(); const s = 0.4 + hatch * 0.7; ctx.scale(s, s); drawSunfish(ctx, 34 * S, this.t, { flap: this.menuFlap * 2, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.1 }); ctx.restore(); }
+    // soft rising bubbles throughout, for life
+    for (let i = 0; i < 12; i++) {
+      const bx = cx + Math.sin(i * 2.1) * w * 0.32;
+      const by = h - ((T * 28 + i * 82) % (h * 0.95));
+      ctx.fillStyle = rgba('#dff3f7', 0.16);
+      ctx.beginPath(); ctx.arc(bx, by, (1.3 + (i % 3)) * S, 0, TAU); ctx.fill();
+    }
+    if (T < 4.6) {
+      // a hopeful egg, jiggling, then cracking slowly open
+      const hatch = clamp((T - 3.0) / 1.6, 0, 1);
+      ctx.save(); ctx.translate(cx, cy + Math.sin(T * 1.5) * 6 * S); ctx.rotate(Math.sin(T * (3 + hatch * 6)) * 0.05 * (1 - hatch * 0.5));
+      if (hatch < 1) drawEgg(ctx, 50 * S * (1 - hatch * 0.5));
+      if (hatch > 0.2) { ctx.save(); const s = 0.35 + hatch * 0.75; ctx.scale(s, s); drawSunfish(ctx, 34 * S, this.t, { flap: this.menuFlap * 2, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.1 }); ctx.restore(); }
       ctx.restore();
     } else {
-      const loss = clamp((T - 5.6) / 1.4, 0, 1);
-      const sep = 56 * S + Math.sin(T * 1.2) * 8 * S;
+      const loss = clamp((T - 8.4) / 1.8, 0, 1);
+      const together = clamp((T - 4.6) / 1.2, 0, 1);
+      const sep = (38 + together * 20) * S + Math.sin(T * 1.2) * 8 * S;
+      // you (left)
       ctx.save(); ctx.translate(cx - sep, cy + Math.sin(T * 1.6) * 9 * S); ctx.rotate(Math.sin(T * 1.3) * 0.08);
-      drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.15 + loss * 0.7 }); ctx.restore();
-      if (loss < 0.5) { ctx.save(); ctx.globalAlpha = 1 - loss * 2; ctx.translate(cx + sep, cy + Math.sin(T * 1.6 + 1) * 9 * S); ctx.rotate(Math.sin(T * 1.3 + 1) * 0.08); drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: SKIN_BY_ID.moon }); ctx.restore(); }
-      if (T > 5.2 && T < 6.8) { const k = clamp((T - 5.2) / 1.2, 0, 1); ctx.save(); ctx.translate(lerp(cx + w * 0.55, cx + sep, k), cy - 6 * S); ctx.scale(-1, 1); ctx.globalAlpha = 0.9; drawShark(ctx, 72 * S, this.t, { mouth: clamp((k - 0.55) / 0.3, 0, 1), color: '#06121c' }); ctx.restore(); }
-      if (loss >= 0.45) { ctx.save(); ctx.fillStyle = rgba(P.blood, 0.4 * (1 - (loss - 0.45) * 1.8)); ctx.beginPath(); ctx.arc(cx + sep, cy, 26 * S, 0, TAU); ctx.fill(); ctx.restore(); }
+      drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.12 + loss * 0.7 }); ctx.restore();
+      // a little heart between you while you're together and happy
+      if (T > 5.4 && T < 8.0) { ctx.save(); ctx.globalAlpha = 0.45 + 0.3 * Math.sin(T * 2); this.drawTinyHeart(ctx, cx, cy - 42 * S - Math.sin(T * 2) * 6 * S, (7 + Math.sin(T * 3)) * S); ctx.restore(); }
+      // sibling (right) — fades as it's taken
+      if (loss < 0.55) { ctx.save(); ctx.globalAlpha = 1 - loss / 0.55; ctx.translate(cx + sep, cy + Math.sin(T * 1.6 + 1) * 9 * S); ctx.rotate(Math.sin(T * 1.3 + 1) * 0.08); drawSunfish(ctx, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: SKIN_BY_ID.moon }); ctx.restore(); }
+      // the shadow looms in slowly, then strikes
+      if (T > 7.6 && T < 10.2) { const k = clamp((T - 7.6) / 1.8, 0, 1); ctx.save(); ctx.translate(lerp(cx + w * 0.6, cx + sep, k), cy - 6 * S); ctx.scale(-1, 1); ctx.globalAlpha = 0.3 + 0.6 * k; drawShark(ctx, 80 * S, this.t, { mouth: clamp((k - 0.7) / 0.25, 0, 1), color: '#06121c' }); ctx.restore(); }
+      if (loss >= 0.4) { ctx.save(); ctx.fillStyle = rgba(P.blood, 0.45 * (1 - (loss - 0.4) * 1.4)); ctx.beginPath(); ctx.arc(cx + sep, cy, 28 * S, 0, TAU); ctx.fill(); ctx.restore(); }
     }
-    const line = T < 2.0 ? STR.intro.egg : T < 3.4 ? STR.intro.hatch : T < 5.6 ? STR.intro.siblings : STR.intro.loss;
+    const line = T < 3.0 ? STR.intro.egg : T < 4.6 ? STR.intro.hatch : T < 8.4 ? STR.intro.siblings : STR.intro.loss;
     ctx.globalAlpha = 0.92; ctx.font = FONT(19, '700'); ctx.fillStyle = P.foam;
     line.split('\n').forEach((ln, i) => ctx.fillText(ln, cx, h * 0.78 + i * 26));
     ctx.globalAlpha = 0.4 + 0.3 * Math.sin(this.t * 3); ctx.font = FONT(12, '600'); ctx.fillStyle = rgba(P.foam, 0.7);
     ctx.fillText(STR.intro.skip, cx, h * 0.93); ctx.globalAlpha = 1;
-    if (T > 7.4) { ctx.fillStyle = rgba('#04101c', clamp((T - 7.4) / 0.8, 0, 1) * 0.85); ctx.fillRect(0, 0, w, h); }
+    if (T > 12.4) { ctx.fillStyle = rgba('#04101c', clamp((T - 12.4) / 0.8, 0, 1) * 0.85); ctx.fillRect(0, 0, w, h); }
+  }
+  drawTinyHeart(ctx, x, y, s) {
+    ctx.fillStyle = rgba('#ff8fa3', 0.9);
+    ctx.beginPath(); ctx.moveTo(x, y + s * 0.4);
+    ctx.bezierCurveTo(x - s, y - s * 0.5, x - s * 0.4, y - s, x, y - s * 0.4);
+    ctx.bezierCurveTo(x + s * 0.4, y - s, x + s, y - s * 0.5, x, y + s * 0.4); ctx.fill();
   }
 
   renderDyingOverlay(ctx, view) {
@@ -904,26 +933,52 @@ export class Game {
   }
 
   renderShop(ctx, view) {
-    const { w } = view; const ph = Math.min(484, view.h * 0.94);
-    const { px, py, pw } = this.panel(ctx, view, ph);
+    const { w, h } = view; const S = view.scale;
+    const pw = Math.min(440, w * 0.55), pad = Math.max(16, w * 0.03);
+    const ph = Math.min(500, h * 0.95), px = w - pw - pad, py = (h - ph) / 2;
+
+    // --- left: your fish drifting peacefully in the open ocean ---
+    const fishX = px / 2, fishY = h * 0.48, fr = Math.min(px * 0.3, h * 0.2);
+    const sg = ctx.createRadialGradient(fishX, fishY, 0, fishX, fishY, fr * 2.6);
+    sg.addColorStop(0, rgba(mixHex(P.surfaceTeal, '#bfe9f0', 0.4), 0.22)); sg.addColorStop(1, rgba(P.surfaceTeal, 0));
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(fishX, fishY, fr * 2.6, 0, TAU); ctx.fill();
+    for (let i = 0; i < 6; i++) { const by = fishY + fr - ((this.t * 22 + i * 60) % (fr * 2.4)); ctx.fillStyle = rgba('#dff3f7', 0.16); ctx.beginPath(); ctx.arc(fishX + Math.sin(i * 1.7 + this.t * 0.5) * fr * 0.6, by, (1.3 + i % 3) * S, 0, TAU); ctx.fill(); }
+    ctx.save(); ctx.translate(fishX, fishY + Math.sin(this.t * 0.9) * 10); ctx.rotate(Math.sin(this.t * 0.6) * 0.05);
+    drawSunfish(ctx, fr, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.12 });
+    ctx.restore();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    wobblyText(ctx, STR.shopTitle, w / 2, py + 30, 25, P.foam, 3);
-    ctx.font = FONT(12, '500'); ctx.fillStyle = rgba(P.foam, 0.75); ctx.fillText(STR.shopBlurb, w / 2, py + 52);
-    ctx.fillStyle = P.amber; ctx.font = FONT(15, '800'); ctx.fillText(`🥚 ${this.save.eggs.toLocaleString()} ${STR.shopBanked}`, w / 2, py + 74);
-    const rowH = (ph - 140) / UPGRADES.length;
+    ctx.font = FONT(16, '800'); ctx.fillStyle = P.foam; ctx.fillText(this.skinObj().name, fishX, fishY + fr + 26);
+    ctx.font = FONT(11, '600'); ctx.fillStyle = rgba(P.amberSoft, 0.85); ctx.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), fishX, fishY + fr + 46);
+
+    // --- right: the upgrade panel ---
+    ctx.fillStyle = rgba('#0a2236', 0.9); roundRect(ctx, px, py, pw, ph, 18); ctx.fill();
+    ctx.strokeStyle = rgba(P.foam, 0.25); ctx.lineWidth = 2; ctx.stroke();
+    wobblyText(ctx, STR.shopTitle, px + pw / 2, py + 28, 22, P.foam, 3);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = FONT(14, '800'); ctx.fillStyle = P.amber; ctx.fillText(`🥚 ${this.save.eggs.toLocaleString()} ${STR.shopBanked}`, px + pw / 2, py + 54);
+    const top = py + 74, botY = py + ph - 48, rowH = (botY - top) / UPGRADES.length;
     UPGRADES.forEach((u, i) => {
-      const ry = py + 94 + i * rowH;
-      const lvl = this.save.upg[u.id] || 0; const maxed = lvl >= u.max;
-      const cost = u.baseCost + u.step * lvl;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.font = FONT(15, '800'); ctx.fillStyle = P.foam; ctx.fillText(u.name, px + 24, ry + 8);
-      ctx.font = FONT(11, '500'); ctx.fillStyle = rgba(P.foam, 0.7); ctx.fillText(u.desc, px + 24, ry + 25);
-      for (let k = 0; k < u.max; k++) { ctx.fillStyle = k < lvl ? P.amber : 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(px + 24 + k * 16, ry + 39, 5, 0, TAU); ctx.fill(); }
-      const bx = px + pw - 132;
-      if (maxed) { ctx.fillStyle = rgba(P.amberSoft, 0.8); ctx.font = FONT(14, '800'); ctx.textAlign = 'center'; ctx.fillText(STR.shopMaxed, bx + 54, ry + 20); }
-      else this.button(ctx, 'buy:' + u.id, bx, ry + 2, 108, 36, `🥚 ${cost}`, this.save.eggs >= cost, this.save.eggs >= cost);
+      const ry = top + i * rowH, mid = ry + rowH / 2;
+      const lvl = this.save.upg[u.id] || 0, maxed = lvl >= u.max;
+      const cost = u.baseCost + u.step * lvl, afford = this.save.eggs >= cost;
+      ctx.fillStyle = rgba('#06243a', 0.5); roundRect(ctx, px + 12, ry + 3, pw - 24, rowH - 6, 10); ctx.fill();
+      // icon chip
+      ctx.fillStyle = rgba(maxed ? P.amber : '#2e6f80', 0.92); roundRect(ctx, px + 18, mid - 15, 30, 30, 8); ctx.fill();
+      ctx.strokeStyle = rgba(P.ink, 0.6); ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = maxed ? '#3a2a10' : P.foam; ctx.font = FONT(16, '800'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(UPGRADE_ICON[u.id] || '★', px + 33, mid + 1);
+      // name + desc
+      ctx.textAlign = 'left';
+      ctx.font = FONT(14, '800'); ctx.fillStyle = P.foam; ctx.fillText(u.name, px + 58, mid - 9);
+      ctx.font = FONT(10, '500'); ctx.fillStyle = rgba(P.foam, 0.7); ctx.fillText(u.desc, px + 58, mid + 5);
+      // pip meter under the name
+      for (let k = 0; k < u.max; k++) { ctx.fillStyle = k < lvl ? P.amber : 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(px + 60 + k * 13, mid + 16, 3.5, 0, TAU); ctx.fill(); }
+      // cost button / maxed
+      const bw = 84, bx = px + pw - bw - 14;
+      if (maxed) { ctx.fillStyle = rgba(P.amberSoft, 0.85); ctx.font = FONT(12, '800'); ctx.textAlign = 'center'; ctx.fillText(STR.shopMaxed, bx + bw / 2, mid); }
+      else this.button(ctx, 'buy:' + u.id, bx, mid - 16, bw, 32, `🥚 ${cost}`, afford, afford);
     });
-    this.button(ctx, 'back', px + pw / 2 - 55, py + ph - 42, 110, 32, '‹ ' + STR.shopBack);
+    this.button(ctx, 'back', px + pw / 2 - 55, py + ph - 40, 110, 30, '‹ ' + STR.shopBack);
   }
 
   renderWardrobe(ctx, view) {

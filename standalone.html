@@ -2472,8 +2472,8 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.vx += kx;
       this.vy += ky;
       audio.sfx("hurt");
-      for (let i = 0; i < 14; i++) particles.spawn(this.x, this.y, "blood", (Math.random() - 0.5) * 240, (Math.random() - 0.5) * 240);
-      for (let i = 0; i < 8; i++) particles.spawn(this.x, this.y, "inkpuff", (Math.random() - 0.5) * 180, (Math.random() - 0.5) * 180);
+      for (let i = 0; i < 16; i++) particles.spawn(this.x, this.y, "blood", (Math.random() - 0.5) * 240, (Math.random() - 0.5) * 240);
+      particles.burst(this.x, this.y, "gore", 4, 70);
       if (Math.random() < 0.5) this.addWound(true);
       if (this.hp <= 0) {
         this.hp = 0;
@@ -3632,8 +3632,8 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       pr.vx = vx;
       pr.vy = vy;
       pr.kind = kind;
-      pr.life = pr.maxLife = opts.life ?? (kind === "bubble" ? 2.4 : kind === "ring" ? 0.5 : kind === "blood" ? 1.4 : 0.8);
-      pr.size = opts.size ?? (kind === "bubble" ? 2 + Math.random() * 4 : kind === "ring" ? 10 : kind === "blood" ? 2 + Math.random() * 5 : 3 + Math.random() * 4);
+      pr.life = pr.maxLife = opts.life ?? (kind === "bubble" ? 2.4 : kind === "ring" ? 0.5 : kind === "blood" ? 1.9 : kind === "gore" ? 2.2 : 0.8);
+      pr.size = opts.size ?? (kind === "bubble" ? 2 + Math.random() * 4 : kind === "ring" ? 10 : kind === "blood" ? 2 + Math.random() * 5 : kind === "gore" ? 7 + Math.random() * 9 : 3 + Math.random() * 4);
       pr.color = opts.color ?? null;
       pr.seed = Math.random() * 100;
     }
@@ -3657,9 +3657,13 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           pr.vx *= 0.9;
           pr.vy *= 0.9;
         } else if (pr.kind === "blood") {
-          pr.vy += 36 * dt;
-          pr.vx *= 0.94;
-          pr.vy *= 0.98;
+          pr.vy += 26 * dt;
+          pr.vx *= 0.95;
+          pr.vy *= 0.99;
+        } else if (pr.kind === "gore") {
+          pr.vx *= 0.92;
+          pr.vy *= 0.95;
+          pr.size += 22 * dt;
         } else if (pr.kind === "sparkle") {
           pr.vy += 40 * dt;
           pr.vx *= 0.96;
@@ -3692,9 +3696,15 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           ctx3.arc(pr.x, pr.y, pr.size * (1.4 - a), 0, TAU);
           ctx3.fill();
         } else if (pr.kind === "blood") {
-          ctx3.fillStyle = rgba(a > 0.6 ? PALETTE.blood : PALETTE.bloodDark, a * 0.85);
+          const ea = a * a;
+          ctx3.fillStyle = rgba(a > 0.55 ? PALETTE.blood : PALETTE.bloodDark, ea * 0.9);
           ctx3.beginPath();
-          ctx3.arc(pr.x, pr.y, pr.size * (1.3 - a * 0.3), 0, TAU);
+          ctx3.arc(pr.x, pr.y, pr.size * (1.25 - a * 0.25), 0, TAU);
+          ctx3.fill();
+        } else if (pr.kind === "gore") {
+          ctx3.fillStyle = rgba(PALETTE.bloodDark, a * 0.28);
+          ctx3.beginPath();
+          ctx3.arc(pr.x, pr.y, pr.size, 0, TAU);
           ctx3.fill();
         } else if (pr.kind === "sparkle") {
           ctx3.fillStyle = rgba(pr.color || "#ffd97a", a);
@@ -3943,6 +3953,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   var SAVE_KEY = "sunfish.useless.v2";
   var FONT = (s, w = "700") => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
   var SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
+  var UPGRADE_ICON = { vitality: "\u2665", grace: "\u2726", dash: "\xBB", slip: "\u25C6", roe: "\u25CF", magnet: "\u271A", armor: "\u25B0", headstart: "\u2605", wind: "\u21BA" };
   function freshSave() {
     return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
   }
@@ -4520,8 +4531,8 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       const msgs = STR.deaths;
       const byCause = { caught: 2, squid: 10 };
       this.deathMsg = cause in byCause ? msgs[byCause[cause]] : msgs[Math.floor(Math.random() * msgs.length)];
-      this.particles.burst(this.player.x, this.player.y, "blood", 26, 260);
-      this.particles.burst(this.player.x, this.player.y, "inkpuff", 14, 180);
+      this.particles.burst(this.player.x, this.player.y, "blood", 32, 260);
+      this.particles.burst(this.player.x, this.player.y, "gore", 9, 90);
       Audio.sea(false);
       this.reviveCost = Math.round(25 + this.checkpointRegionIdx * 22);
       this.canRevive = this.stats().wind > 0 && !this.usedWind || this.save.eggs >= this.reviveCost;
@@ -4548,8 +4559,8 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     // intro: a hopeful egg hatches, you swim with your sibling, the sea takes them
     updateIntro(dt) {
       this.introT += dt;
-      if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 7.6);
-      if (this.introT >= 8.2) {
+      if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 12.4);
+      if (this.introT >= 13.2) {
         Audio.unlock();
         this.beginPlay();
       }
@@ -4788,12 +4799,20 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           break;
         }
       }
-      const pool = SKINS.filter((s) => s.rarity === rar);
+      const lootable = SKINS.filter((s) => s.id !== DEFAULT_SKIN);
+      let pool = lootable.filter((s) => s.rarity === rar && !this.owns(s.id));
+      if (!pool.length) pool = lootable.filter((s) => !this.owns(s.id));
+      let dupe = false;
+      if (!pool.length) {
+        pool = lootable.filter((s) => s.rarity === rar);
+        dupe = true;
+      }
+      if (!pool.length) pool = lootable;
       const skin = pool[Math.floor(Math.random() * pool.length)];
-      const dupe = this.owns(skin.id);
       let refund = 0;
-      if (dupe) {
-        refund = RARITY[rar].refund;
+      if (this.owns(skin.id)) {
+        dupe = true;
+        refund = RARITY[skin.rarity].refund;
         this.save.eggs += refund;
       } else this.save.skins.push(skin.id);
       return { skin, dupe, refund };
@@ -4929,13 +4948,15 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     }
     renderMenuWorld(ctx3, view2) {
       this.worldXform(ctx3, { ...view2 });
-      const cx = this.camX + view2.worldViewW * 0.5;
-      const cy = REF_H * 0.52 + Math.sin(this.menuFlap * 0.7) * 18;
-      ctx3.save();
-      ctx3.translate(cx, cy);
-      ctx3.rotate(Math.sin(this.menuFlap * 0.5) * 0.06);
-      drawSunfish(ctx3, 64, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj() });
-      ctx3.restore();
+      if (this.state === "menu") {
+        const cx = this.camX + view2.worldViewW * 0.5;
+        const cy = REF_H * 0.52 + Math.sin(this.menuFlap * 0.7) * 18;
+        ctx3.save();
+        ctx3.translate(cx, cy);
+        ctx3.rotate(Math.sin(this.menuFlap * 0.5) * 0.06);
+        drawSunfish(ctx3, 64, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj() });
+        ctx3.restore();
+      }
       this.particles.render(ctx3);
       ctx3.restore();
     }
@@ -4948,55 +4969,70 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       const cx = w / 2, cy = h * 0.46;
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
-      if (T < 3.4) {
-        const hatch = clamp((T - 2) / 1.4, 0, 1);
+      for (let i = 0; i < 12; i++) {
+        const bx = cx + Math.sin(i * 2.1) * w * 0.32;
+        const by = h - (T * 28 + i * 82) % (h * 0.95);
+        ctx3.fillStyle = rgba("#dff3f7", 0.16);
+        ctx3.beginPath();
+        ctx3.arc(bx, by, (1.3 + i % 3) * S, 0, TAU);
+        ctx3.fill();
+      }
+      if (T < 4.6) {
+        const hatch = clamp((T - 3) / 1.6, 0, 1);
         ctx3.save();
         ctx3.translate(cx, cy + Math.sin(T * 1.5) * 6 * S);
-        ctx3.rotate(Math.sin(T * 5) * 0.05 * (1 - hatch));
-        drawEgg(ctx3, 46 * S * (1 - hatch * 0.55));
-        if (hatch > 0.25) {
+        ctx3.rotate(Math.sin(T * (3 + hatch * 6)) * 0.05 * (1 - hatch * 0.5));
+        if (hatch < 1) drawEgg(ctx3, 50 * S * (1 - hatch * 0.5));
+        if (hatch > 0.2) {
           ctx3.save();
-          const s = 0.4 + hatch * 0.7;
+          const s = 0.35 + hatch * 0.75;
           ctx3.scale(s, s);
           drawSunfish(ctx3, 34 * S, this.t, { flap: this.menuFlap * 2, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.1 });
           ctx3.restore();
         }
         ctx3.restore();
       } else {
-        const loss = clamp((T - 5.6) / 1.4, 0, 1);
-        const sep = 56 * S + Math.sin(T * 1.2) * 8 * S;
+        const loss = clamp((T - 8.4) / 1.8, 0, 1);
+        const together = clamp((T - 4.6) / 1.2, 0, 1);
+        const sep = (38 + together * 20) * S + Math.sin(T * 1.2) * 8 * S;
         ctx3.save();
         ctx3.translate(cx - sep, cy + Math.sin(T * 1.6) * 9 * S);
         ctx3.rotate(Math.sin(T * 1.3) * 0.08);
-        drawSunfish(ctx3, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.15 + loss * 0.7 });
+        drawSunfish(ctx3, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.12 + loss * 0.7 });
         ctx3.restore();
-        if (loss < 0.5) {
+        if (T > 5.4 && T < 8) {
           ctx3.save();
-          ctx3.globalAlpha = 1 - loss * 2;
+          ctx3.globalAlpha = 0.45 + 0.3 * Math.sin(T * 2);
+          this.drawTinyHeart(ctx3, cx, cy - 42 * S - Math.sin(T * 2) * 6 * S, (7 + Math.sin(T * 3)) * S);
+          ctx3.restore();
+        }
+        if (loss < 0.55) {
+          ctx3.save();
+          ctx3.globalAlpha = 1 - loss / 0.55;
           ctx3.translate(cx + sep, cy + Math.sin(T * 1.6 + 1) * 9 * S);
           ctx3.rotate(Math.sin(T * 1.3 + 1) * 0.08);
           drawSunfish(ctx3, 40 * S, this.t, { flap: this.menuFlap * 1.5, blink: 1, lookX: 1, skin: SKIN_BY_ID.moon });
           ctx3.restore();
         }
-        if (T > 5.2 && T < 6.8) {
-          const k = clamp((T - 5.2) / 1.2, 0, 1);
+        if (T > 7.6 && T < 10.2) {
+          const k = clamp((T - 7.6) / 1.8, 0, 1);
           ctx3.save();
-          ctx3.translate(lerp(cx + w * 0.55, cx + sep, k), cy - 6 * S);
+          ctx3.translate(lerp(cx + w * 0.6, cx + sep, k), cy - 6 * S);
           ctx3.scale(-1, 1);
-          ctx3.globalAlpha = 0.9;
-          drawShark(ctx3, 72 * S, this.t, { mouth: clamp((k - 0.55) / 0.3, 0, 1), color: "#06121c" });
+          ctx3.globalAlpha = 0.3 + 0.6 * k;
+          drawShark(ctx3, 80 * S, this.t, { mouth: clamp((k - 0.7) / 0.25, 0, 1), color: "#06121c" });
           ctx3.restore();
         }
-        if (loss >= 0.45) {
+        if (loss >= 0.4) {
           ctx3.save();
-          ctx3.fillStyle = rgba(PALETTE.blood, 0.4 * (1 - (loss - 0.45) * 1.8));
+          ctx3.fillStyle = rgba(PALETTE.blood, 0.45 * (1 - (loss - 0.4) * 1.4));
           ctx3.beginPath();
-          ctx3.arc(cx + sep, cy, 26 * S, 0, TAU);
+          ctx3.arc(cx + sep, cy, 28 * S, 0, TAU);
           ctx3.fill();
           ctx3.restore();
         }
       }
-      const line = T < 2 ? STR.intro.egg : T < 3.4 ? STR.intro.hatch : T < 5.6 ? STR.intro.siblings : STR.intro.loss;
+      const line = T < 3 ? STR.intro.egg : T < 4.6 ? STR.intro.hatch : T < 8.4 ? STR.intro.siblings : STR.intro.loss;
       ctx3.globalAlpha = 0.92;
       ctx3.font = FONT(19, "700");
       ctx3.fillStyle = PALETTE.foam;
@@ -5006,10 +5042,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
       ctx3.fillText(STR.intro.skip, cx, h * 0.93);
       ctx3.globalAlpha = 1;
-      if (T > 7.4) {
-        ctx3.fillStyle = rgba("#04101c", clamp((T - 7.4) / 0.8, 0, 1) * 0.85);
+      if (T > 12.4) {
+        ctx3.fillStyle = rgba("#04101c", clamp((T - 12.4) / 0.8, 0, 1) * 0.85);
         ctx3.fillRect(0, 0, w, h);
       }
+    }
+    drawTinyHeart(ctx3, x, y, s) {
+      ctx3.fillStyle = rgba("#ff8fa3", 0.9);
+      ctx3.beginPath();
+      ctx3.moveTo(x, y + s * 0.4);
+      ctx3.bezierCurveTo(x - s, y - s * 0.5, x - s * 0.4, y - s, x, y - s * 0.4);
+      ctx3.bezierCurveTo(x + s * 0.4, y - s, x + s, y - s * 0.5, x, y + s * 0.4);
+      ctx3.fill();
     }
     renderDyingOverlay(ctx3, view2) {
       const { w, h } = view2;
@@ -5247,47 +5291,91 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.button(ctx3, "mute", w - 110 - 12, 12, 110, 34, Audio.isMuted() ? "\u{1F507} " + STR.muted : "\u{1F50A} " + STR.unmuted);
     }
     renderShop(ctx3, view2) {
-      const { w } = view2;
-      const ph = Math.min(484, view2.h * 0.94);
-      const { px, py, pw } = this.panel(ctx3, view2, ph);
+      const { w, h } = view2;
+      const S = view2.scale;
+      const pw = Math.min(440, w * 0.55), pad = Math.max(16, w * 0.03);
+      const ph = Math.min(500, h * 0.95), px = w - pw - pad, py = (h - ph) / 2;
+      const fishX = px / 2, fishY = h * 0.48, fr = Math.min(px * 0.3, h * 0.2);
+      const sg = ctx3.createRadialGradient(fishX, fishY, 0, fishX, fishY, fr * 2.6);
+      sg.addColorStop(0, rgba(mixHex(PALETTE.surfaceTeal, "#bfe9f0", 0.4), 0.22));
+      sg.addColorStop(1, rgba(PALETTE.surfaceTeal, 0));
+      ctx3.fillStyle = sg;
+      ctx3.beginPath();
+      ctx3.arc(fishX, fishY, fr * 2.6, 0, TAU);
+      ctx3.fill();
+      for (let i = 0; i < 6; i++) {
+        const by = fishY + fr - (this.t * 22 + i * 60) % (fr * 2.4);
+        ctx3.fillStyle = rgba("#dff3f7", 0.16);
+        ctx3.beginPath();
+        ctx3.arc(fishX + Math.sin(i * 1.7 + this.t * 0.5) * fr * 0.6, by, (1.3 + i % 3) * S, 0, TAU);
+        ctx3.fill();
+      }
+      ctx3.save();
+      ctx3.translate(fishX, fishY + Math.sin(this.t * 0.9) * 10);
+      ctx3.rotate(Math.sin(this.t * 0.6) * 0.05);
+      drawSunfish(ctx3, fr, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.12 });
+      ctx3.restore();
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
-      wobblyText(ctx3, STR.shopTitle, w / 2, py + 30, 25, PALETTE.foam, 3);
-      ctx3.font = FONT(12, "500");
-      ctx3.fillStyle = rgba(PALETTE.foam, 0.75);
-      ctx3.fillText(STR.shopBlurb, w / 2, py + 52);
+      ctx3.font = FONT(16, "800");
+      ctx3.fillStyle = PALETTE.foam;
+      ctx3.fillText(this.skinObj().name, fishX, fishY + fr + 26);
+      ctx3.font = FONT(11, "600");
+      ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.85);
+      ctx3.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), fishX, fishY + fr + 46);
+      ctx3.fillStyle = rgba("#0a2236", 0.9);
+      roundRect(ctx3, px, py, pw, ph, 18);
+      ctx3.fill();
+      ctx3.strokeStyle = rgba(PALETTE.foam, 0.25);
+      ctx3.lineWidth = 2;
+      ctx3.stroke();
+      wobblyText(ctx3, STR.shopTitle, px + pw / 2, py + 28, 22, PALETTE.foam, 3);
+      ctx3.textAlign = "center";
+      ctx3.textBaseline = "middle";
+      ctx3.font = FONT(14, "800");
       ctx3.fillStyle = PALETTE.amber;
-      ctx3.font = FONT(15, "800");
-      ctx3.fillText(`\u{1F95A} ${this.save.eggs.toLocaleString()} ${STR.shopBanked}`, w / 2, py + 74);
-      const rowH = (ph - 140) / UPGRADES.length;
+      ctx3.fillText(`\u{1F95A} ${this.save.eggs.toLocaleString()} ${STR.shopBanked}`, px + pw / 2, py + 54);
+      const top = py + 74, botY = py + ph - 48, rowH = (botY - top) / UPGRADES.length;
       UPGRADES.forEach((u, i) => {
-        const ry = py + 94 + i * rowH;
-        const lvl = this.save.upg[u.id] || 0;
-        const maxed = lvl >= u.max;
-        const cost = u.baseCost + u.step * lvl;
-        ctx3.textAlign = "left";
+        const ry = top + i * rowH, mid = ry + rowH / 2;
+        const lvl = this.save.upg[u.id] || 0, maxed = lvl >= u.max;
+        const cost = u.baseCost + u.step * lvl, afford = this.save.eggs >= cost;
+        ctx3.fillStyle = rgba("#06243a", 0.5);
+        roundRect(ctx3, px + 12, ry + 3, pw - 24, rowH - 6, 10);
+        ctx3.fill();
+        ctx3.fillStyle = rgba(maxed ? PALETTE.amber : "#2e6f80", 0.92);
+        roundRect(ctx3, px + 18, mid - 15, 30, 30, 8);
+        ctx3.fill();
+        ctx3.strokeStyle = rgba(PALETTE.ink, 0.6);
+        ctx3.lineWidth = 2;
+        ctx3.stroke();
+        ctx3.fillStyle = maxed ? "#3a2a10" : PALETTE.foam;
+        ctx3.font = FONT(16, "800");
+        ctx3.textAlign = "center";
         ctx3.textBaseline = "middle";
-        ctx3.font = FONT(15, "800");
+        ctx3.fillText(UPGRADE_ICON[u.id] || "\u2605", px + 33, mid + 1);
+        ctx3.textAlign = "left";
+        ctx3.font = FONT(14, "800");
         ctx3.fillStyle = PALETTE.foam;
-        ctx3.fillText(u.name, px + 24, ry + 8);
-        ctx3.font = FONT(11, "500");
+        ctx3.fillText(u.name, px + 58, mid - 9);
+        ctx3.font = FONT(10, "500");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
-        ctx3.fillText(u.desc, px + 24, ry + 25);
+        ctx3.fillText(u.desc, px + 58, mid + 5);
         for (let k = 0; k < u.max; k++) {
           ctx3.fillStyle = k < lvl ? PALETTE.amber : "rgba(255,255,255,0.18)";
           ctx3.beginPath();
-          ctx3.arc(px + 24 + k * 16, ry + 39, 5, 0, TAU);
+          ctx3.arc(px + 60 + k * 13, mid + 16, 3.5, 0, TAU);
           ctx3.fill();
         }
-        const bx = px + pw - 132;
+        const bw = 84, bx = px + pw - bw - 14;
         if (maxed) {
-          ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.8);
-          ctx3.font = FONT(14, "800");
+          ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.85);
+          ctx3.font = FONT(12, "800");
           ctx3.textAlign = "center";
-          ctx3.fillText(STR.shopMaxed, bx + 54, ry + 20);
-        } else this.button(ctx3, "buy:" + u.id, bx, ry + 2, 108, 36, `\u{1F95A} ${cost}`, this.save.eggs >= cost, this.save.eggs >= cost);
+          ctx3.fillText(STR.shopMaxed, bx + bw / 2, mid);
+        } else this.button(ctx3, "buy:" + u.id, bx, mid - 16, bw, 32, `\u{1F95A} ${cost}`, afford, afford);
       });
-      this.button(ctx3, "back", px + pw / 2 - 55, py + ph - 42, 110, 32, "\u2039 " + STR.shopBack);
+      this.button(ctx3, "back", px + pw / 2 - 55, py + ph - 40, 110, 30, "\u2039 " + STR.shopBack);
     }
     renderWardrobe(ctx3, view2) {
       const { w } = view2;
