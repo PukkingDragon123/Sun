@@ -23,6 +23,7 @@ const SAVE_KEY = 'sunfish.useless.v2';
 const FONT = (s, w = '700') => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
 const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
 const UPGRADE_ICON = { vitality: '♥', grace: '✦', dash: '»', slip: '◆', roe: '●', magnet: '✚', armor: '▰', headstart: '★', wind: '↺' };
+const PREDATOR_TYPES = new Set(['seal', 'shark', 'orca', 'barracuda', 'angler', 'swordfish', 'cookiecutter', 'squid']);
 
 function freshSave() {
   return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
@@ -79,7 +80,7 @@ export class Game {
     this.eggsTarget = 0; this.layCount = 0;
     this.loot = { phase: 'idle', t: 0, result: null, msg: null };
     this.funFact = STR.funFacts[0];
-    this.gullTimer = SEAGULL.interval; this.netDrainT = 0;
+    this.gullTimer = SEAGULL.interval; this.netDrainT = 0; this.spawnCD = 0;
     this.clearEntities();
   }
 
@@ -119,7 +120,7 @@ export class Game {
 
     this.clearEntities();
     this.spawnIdx = 0; this.runEggs = 0; this.runHits = 0; this.runBanked = false; this.usedWind = false;
-    this.netDrainT = 0;
+    this.netDrainT = 0; this.spawnCD = 0;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
 
@@ -156,7 +157,7 @@ export class Game {
     if (this.state === 'dead' || this.state === 'win') { this.updateEnd(); return; }
 
     const pl = this.player;
-    this.activateSpawners();
+    this.activateSpawners(dt);
 
     const { scale } = this.view;
     let target = { x: 0, y: 0, active: false };
@@ -235,25 +236,41 @@ export class Game {
     this.camX = lerp(this.camX, camTarget, clamp(dt * 5, 0, 1));
   }
 
-  activateSpawners() {
-    const lookX = this.camX + this.view.worldViewW + 240;
+  // how many hunters may stalk you at once (ramps up region by region)
+  maxPredators() { return 2 + (this.regionIdx >= 4 ? 1 : 0) + (this.regionIdx >= 6 ? 1 : 0); }
+
+  activateSpawners(dt) {
+    this.spawnCD = Math.max(0, (this.spawnCD || 0) - dt);
+    const lookX = this.camX + this.view.worldViewW + 120;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < lookX) {
-      const s = sp[this.spawnIdx++];
-      switch (s.type) {
-        case 'seal': this.enemies.push(new Seal(s.x, s.y)); break;
-        case 'shark': this.enemies.push(new Shark(s.x, s.y)); break;
-        case 'orca': this.enemies.push(new Shark(s.x, s.y, { big: true })); break;
-        case 'barracuda': this.enemies.push(new Barracuda(s.x, s.y)); break;
-        case 'angler': this.enemies.push(new Angler(s.x, s.y)); break;
-        case 'swordfish': this.enemies.push(new Swordfish(s.x, s.y)); break;
-        case 'cookiecutter': this.enemies.push(new Cookiecutter(s.x, s.y)); break;
-        case 'puffer': this.puffers.push(new Puffer(s.x, s.y)); break;
-        case 'squid': this.squids.push(new Squid(s.x, s.y)); break;
-        case 'copepod': this.copepods.push(new Copepod(s.x, s.y)); break;
-        case 'jelly': this.jellies.push(new Jelly(s.x, s.y)); break;
-        case 'boat': this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir)); break;
+      const s = sp[this.spawnIdx];
+      if (PREDATOR_TYPES.has(s.type)) {
+        // predators arrive ONE AT A TIME, with a cooldown and a concurrent cap —
+        // no more being swarmed by sharks and sea lions the instant you arrive.
+        if (this.spawnCD > 0) break;
+        if (this.enemies.length + this.squids.length >= this.maxPredators()) break;
+        this.spawnCD = 1.1 + Math.random() * 0.9;
       }
+      this.spawnIdx++;
+      this.spawnOne(s);
+    }
+  }
+
+  spawnOne(s) {
+    switch (s.type) {
+      case 'seal': this.enemies.push(new Seal(s.x, s.y)); break;
+      case 'shark': this.enemies.push(new Shark(s.x, s.y)); break;
+      case 'orca': this.enemies.push(new Shark(s.x, s.y, { big: true })); break;
+      case 'barracuda': this.enemies.push(new Barracuda(s.x, s.y)); break;
+      case 'angler': this.enemies.push(new Angler(s.x, s.y)); break;
+      case 'swordfish': this.enemies.push(new Swordfish(s.x, s.y)); break;
+      case 'cookiecutter': this.enemies.push(new Cookiecutter(s.x, s.y)); break;
+      case 'puffer': this.puffers.push(new Puffer(s.x, s.y)); break;
+      case 'squid': this.squids.push(new Squid(s.x, s.y)); break;
+      case 'copepod': this.copepods.push(new Copepod(s.x, s.y)); break;
+      case 'jelly': this.jellies.push(new Jelly(s.x, s.y)); break;
+      case 'boat': this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir)); break;
     }
   }
 
@@ -518,7 +535,7 @@ export class Game {
     pl.poison = 0; pl.parasites = 0; pl.slow = 0;
     pl.x = Math.max(60, this.checkpointX + 140); pl.y = REF_H * 0.5; pl.vx = 0; pl.vy = 0; pl.invuln = 2.6;
     this.clearEntities();
-    this.spawnIdx = 0;
+    this.spawnIdx = 0; this.spawnCD = 0;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < pl.x + 200) this.spawnIdx++;
     this.regionIdx = zoneIndexAt(pl.x);
@@ -551,7 +568,7 @@ export class Game {
       if (tap) { const hit = this.hitButton(tap); if (hit === 'back') { this.state = 'menu'; Audio.sfx('ui'); } else if (hit === 'loot') { this.openLoot(); } else if (hit && hit.startsWith('equip:')) this.equip(hit.slice(6)); }
       else if (key) { this.state = 'menu'; Audio.sfx('ui'); }
     } else if (this.state === 'loot') {
-      if (tap) { const hit = this.hitButton(tap); if (hit === 'back') { this.state = 'wardrobe'; Audio.sfx('ui'); } else if (hit === 'crack') this.crackClam(); else if (hit === 'wear' && this.loot.result) this.equip(this.loot.result.skin.id); }
+      if (tap) { const hit = this.hitButton(tap); if (hit === 'back') { this.state = 'wardrobe'; Audio.sfx('ui'); } else if (hit === 'crack') this.crackClam(); else if (hit === 'wear' && this.loot.result) { this.equip(this.loot.result.skin.id); this.state = 'wardrobe'; } }
     }
   }
 
@@ -1039,9 +1056,11 @@ export class Game {
       ctx.font = FONT(13, '800'); ctx.fillStyle = rc; ctx.fillText(RARITY[skin.rarity].label.toUpperCase(), ccx, py + ph * 0.7);
       ctx.font = FONT(22, '800'); ctx.fillStyle = P.foam; ctx.fillText(skin.name, ccx, py + ph * 0.76);
       ctx.font = FONT(13, '600'); ctx.fillStyle = rgba(P.foam, 0.85); ctx.fillText(dupe ? STR.lootDupe(refund) : STR.lootGot, ccx, py + ph * 0.82);
-      this.button(ctx, 'crack', px + pw / 2 - 124, py + ph - 44, 110, 34, '🦪 ' + STR.lootAgain, this.save.eggs >= LOOTBOX.cost, true);
-      if (!dupe) this.button(ctx, 'wear', px + pw / 2 + 14, py + ph - 44, 110, 34, '✦ ' + STR.lootEquipNow);
-      else this.button(ctx, 'back', px + pw / 2 + 14, py + ph - 44, 110, 34, '‹ ' + STR.shopBack);
+      const by = py + ph - 44, bw = 104, gap = 8, three = !dupe;
+      const totalW = (three ? 3 : 2) * bw + (three ? 2 : 1) * gap; let bx = px + pw / 2 - totalW / 2;
+      this.button(ctx, 'crack', bx, by, bw, 34, '🦪 ' + STR.lootAgain, this.save.eggs >= LOOTBOX.cost, true); bx += bw + gap;
+      if (three) { this.button(ctx, 'wear', bx, by, bw, 34, '✦ ' + STR.lootEquipNow, true, true); bx += bw + gap; }
+      this.button(ctx, 'back', bx, by, bw, 34, '‹ ' + STR.shopBack);
     } else {
       const opening = l.phase === 'opening';
       const open = opening ? clamp((l.t - 0.55) / 0.6, 0, 1) : 0;

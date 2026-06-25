@@ -3954,6 +3954,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   var FONT = (s, w = "700") => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
   var SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
   var UPGRADE_ICON = { vitality: "\u2665", grace: "\u2726", dash: "\xBB", slip: "\u25C6", roe: "\u25CF", magnet: "\u271A", armor: "\u25B0", headstart: "\u2605", wind: "\u21BA" };
+  var PREDATOR_TYPES = /* @__PURE__ */ new Set(["seal", "shark", "orca", "barracuda", "angler", "swordfish", "cookiecutter", "squid"]);
   function freshSave() {
     return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
   }
@@ -4037,6 +4038,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.funFact = STR.funFacts[0];
       this.gullTimer = SEAGULL.interval;
       this.netDrainT = 0;
+      this.spawnCD = 0;
       this.clearEntities();
     }
     clearEntities() {
@@ -4086,6 +4088,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.runBanked = false;
       this.usedWind = false;
       this.netDrainT = 0;
+      this.spawnCD = 0;
       const sp = this.world.spawners;
       while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
       this.regionIdx = zoneIndexAt(this.player.x);
@@ -4139,7 +4142,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         return;
       }
       const pl = this.player;
-      this.activateSpawners();
+      this.activateSpawners(dt);
       const { scale } = this.view;
       let target = { x: 0, y: 0, active: false };
       if (this.state === "play") {
@@ -4215,49 +4218,63 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
       this.camX = lerp(this.camX, camTarget, clamp(dt * 5, 0, 1));
     }
-    activateSpawners() {
-      const lookX = this.camX + this.view.worldViewW + 240;
+    // how many hunters may stalk you at once (ramps up region by region)
+    maxPredators() {
+      return 2 + (this.regionIdx >= 4 ? 1 : 0) + (this.regionIdx >= 6 ? 1 : 0);
+    }
+    activateSpawners(dt) {
+      this.spawnCD = Math.max(0, (this.spawnCD || 0) - dt);
+      const lookX = this.camX + this.view.worldViewW + 120;
       const sp = this.world.spawners;
       while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < lookX) {
-        const s = sp[this.spawnIdx++];
-        switch (s.type) {
-          case "seal":
-            this.enemies.push(new Seal(s.x, s.y));
-            break;
-          case "shark":
-            this.enemies.push(new Shark(s.x, s.y));
-            break;
-          case "orca":
-            this.enemies.push(new Shark(s.x, s.y, { big: true }));
-            break;
-          case "barracuda":
-            this.enemies.push(new Barracuda(s.x, s.y));
-            break;
-          case "angler":
-            this.enemies.push(new Angler(s.x, s.y));
-            break;
-          case "swordfish":
-            this.enemies.push(new Swordfish(s.x, s.y));
-            break;
-          case "cookiecutter":
-            this.enemies.push(new Cookiecutter(s.x, s.y));
-            break;
-          case "puffer":
-            this.puffers.push(new Puffer(s.x, s.y));
-            break;
-          case "squid":
-            this.squids.push(new Squid(s.x, s.y));
-            break;
-          case "copepod":
-            this.copepods.push(new Copepod(s.x, s.y));
-            break;
-          case "jelly":
-            this.jellies.push(new Jelly(s.x, s.y));
-            break;
-          case "boat":
-            this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir));
-            break;
+        const s = sp[this.spawnIdx];
+        if (PREDATOR_TYPES.has(s.type)) {
+          if (this.spawnCD > 0) break;
+          if (this.enemies.length + this.squids.length >= this.maxPredators()) break;
+          this.spawnCD = 1.1 + Math.random() * 0.9;
         }
+        this.spawnIdx++;
+        this.spawnOne(s);
+      }
+    }
+    spawnOne(s) {
+      switch (s.type) {
+        case "seal":
+          this.enemies.push(new Seal(s.x, s.y));
+          break;
+        case "shark":
+          this.enemies.push(new Shark(s.x, s.y));
+          break;
+        case "orca":
+          this.enemies.push(new Shark(s.x, s.y, { big: true }));
+          break;
+        case "barracuda":
+          this.enemies.push(new Barracuda(s.x, s.y));
+          break;
+        case "angler":
+          this.enemies.push(new Angler(s.x, s.y));
+          break;
+        case "swordfish":
+          this.enemies.push(new Swordfish(s.x, s.y));
+          break;
+        case "cookiecutter":
+          this.enemies.push(new Cookiecutter(s.x, s.y));
+          break;
+        case "puffer":
+          this.puffers.push(new Puffer(s.x, s.y));
+          break;
+        case "squid":
+          this.squids.push(new Squid(s.x, s.y));
+          break;
+        case "copepod":
+          this.copepods.push(new Copepod(s.x, s.y));
+          break;
+        case "jelly":
+          this.jellies.push(new Jelly(s.x, s.y));
+          break;
+        case "boat":
+          this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir));
+          break;
       }
     }
     collide() {
@@ -4600,6 +4617,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       pl.invuln = 2.6;
       this.clearEntities();
       this.spawnIdx = 0;
+      this.spawnCD = 0;
       const sp = this.world.spawners;
       while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < pl.x + 200) this.spawnIdx++;
       this.regionIdx = zoneIndexAt(pl.x);
@@ -4679,7 +4697,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
             this.state = "wardrobe";
             Audio.sfx("ui");
           } else if (hit === "crack") this.crackClam();
-          else if (hit === "wear" && this.loot.result) this.equip(this.loot.result.skin.id);
+          else if (hit === "wear" && this.loot.result) {
+            this.equip(this.loot.result.skin.id);
+            this.state = "wardrobe";
+          }
         }
       }
     }
@@ -5474,9 +5495,16 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         ctx3.font = FONT(13, "600");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
         ctx3.fillText(dupe ? STR.lootDupe(refund) : STR.lootGot, ccx, py + ph * 0.82);
-        this.button(ctx3, "crack", px + pw / 2 - 124, py + ph - 44, 110, 34, "\u{1F9AA} " + STR.lootAgain, this.save.eggs >= LOOTBOX.cost, true);
-        if (!dupe) this.button(ctx3, "wear", px + pw / 2 + 14, py + ph - 44, 110, 34, "\u2726 " + STR.lootEquipNow);
-        else this.button(ctx3, "back", px + pw / 2 + 14, py + ph - 44, 110, 34, "\u2039 " + STR.shopBack);
+        const by = py + ph - 44, bw = 104, gap = 8, three = !dupe;
+        const totalW = (three ? 3 : 2) * bw + (three ? 2 : 1) * gap;
+        let bx = px + pw / 2 - totalW / 2;
+        this.button(ctx3, "crack", bx, by, bw, 34, "\u{1F9AA} " + STR.lootAgain, this.save.eggs >= LOOTBOX.cost, true);
+        bx += bw + gap;
+        if (three) {
+          this.button(ctx3, "wear", bx, by, bw, 34, "\u2726 " + STR.lootEquipNow, true, true);
+          bx += bw + gap;
+        }
+        this.button(ctx3, "back", bx, by, bw, 34, "\u2039 " + STR.shopBack);
       } else {
         const opening = l.phase === "opening";
         const open = opening ? clamp((l.t - 0.55) / 0.6, 0, 1) : 0;
