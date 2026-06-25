@@ -113,8 +113,9 @@ export function makePaper(size = 220) {
   return g.createPattern(c, 'repeat');
 }
 
-// Drifting godray shafts from the surface (drawn additively).
-export function godrays(ctx, w, h, t, count = 6) {
+// Drifting godray shafts from the surface (drawn additively). `intensity`
+// scales the brightness so deep regions can fade them out.
+export function godrays(ctx, w, h, t, count = 6, intensity = 1) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < count; i++) {
@@ -122,7 +123,7 @@ export function godrays(ctx, w, h, t, count = 6) {
     const x = ((i + 0.5) / count) * w + Math.sin(t * 0.18 + seed) * w * 0.06;
     const sway = Math.sin(t * 0.11 + seed * 2) * 40;
     const topW = lerp(26, 64, hash1(i * 13));
-    const a = 0.05 + 0.035 * (0.5 + 0.5 * Math.sin(t * 0.3 + seed));
+    const a = (0.05 + 0.035 * (0.5 + 0.5 * Math.sin(t * 0.3 + seed))) * intensity;
     const g = ctx.createLinearGradient(x, 0, x + sway, h);
     g.addColorStop(0, rgba('#bfeefc', a));
     g.addColorStop(0.6, rgba('#bfeefc', a * 0.25));

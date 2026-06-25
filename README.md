@@ -15,11 +15,15 @@ it directly, or play it straight from GitHub via the htmlpreview proxy:
 result, enable **GitHub Pages** on this branch — see below.
 
 
-> Drag with your finger (or mouse) and the fish follows with smooth spring
-> physics. Flick to dash. Dodge **rocks**, **currents**, **seals**, **jellyfish**
-> and **fishing boats** (their nets *catch* you, their propellers *cut* you).
-> Reach the Spawning Ground, lay your eggs, win. Die — and try again, a little
-> less useless each run.
+> Drag with your finger (or mouse) and the slow, weighty fish follows with
+> smooth spring physics. Flick to dash. The crossing is **long** and spans nine
+> regions — dodge **rocks, coral, currents, sea urchins, mines, anchors and
+> baited hooks**, and outwit **seals, sharks, barracuda, anglerfish, pufferfish,
+> squid, jellyfish and fishing boats** (nets *catch* you, propellers *cut* you,
+> squid *grab* you). Region **checkpoints** let you revive; meta-upgrades make
+> the trek shorter and gentler. Reach the Spawning Ground, lay your eggs (the
+> lifetime tally keeps climbing), win. Then spend eggs on **loot-box clams** for
+> 16 collectible **skins**. Die — and try again, a little less useless each run.
 
 ## Play
 
@@ -39,10 +43,23 @@ python3 -m http.server 8000
 - **Gamepad:** left stick to swim · **A** to dash
 
 ## Roguelike loop
-Five zones introduce one hazard at a time (Shallows → Drift → Cold Deep →
-Shipping Lane → Spawning Ground). Permadeath, but the **plankton** you collect
-banks between runs — spend it in the *Tide-Pool Outfitters* on permanent
-upgrades (more hearts, faster swimming, the dash, slippery skin, luckier roe).
+**Nine regions** introduce hazards a few at a time — Sunlit Shallows → Kelp
+Forest → Open Drift → Jelly Bloom → Cold Deep → Twilight Zone → Shipping Lane →
+Midnight Trench → Spawning Ground — getting darker and deadlier before the calm
+finale. The crossing is long, but every region boundary is a **checkpoint**:
+when you die you can **revive** there (free with *Second Wind*, otherwise for
+eggs).
+
+The **eggs** you gather from food are the currency. Dying still banks what you
+collected; finishing lays the whole clutch (and adds to a lifetime total). Spend
+eggs two ways:
+
+- *Tide-Pool Outfitters* — permanent upgrades: more hearts, faster swimming, the
+  dash, slippery skin, lucky roe, a gill **magnet**, thick hide, a **head start**
+  (begin further along), and **Second Wind** (a free revive).
+- *Mystery Clams* — loot boxes that drop one of **16 skins** across four
+  rarities (dupes refund eggs). Dress your useless fish in the **Wardrobe**.
+
 Runs are seeded, so each crossing is freshly generated.
 
 ## How it's built

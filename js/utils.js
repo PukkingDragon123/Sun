@@ -57,19 +57,26 @@ export function wave(t, ...terms) {
   return s;
 }
 
-// hex -> "r,g,b"
-export function rgb(hex) {
-  const h = hex.replace('#', '');
-  const n = parseInt(h, 16);
-  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+// Parse "#rrggbb" OR "rgb(r,g,b)" -> [r,g,b]. Robust because zone tints are
+// produced by mixHex and fed back into mixHex/rgba, so these must round-trip.
+export function parseRGB(c) {
+  if (c[0] === '#') {
+    const n = parseInt(c.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = c.match(/\d+/g);
+  return m ? [+m[0], +m[1], +m[2]] : [0, 0, 0];
 }
-export function rgba(hex, a) { return `rgba(${rgb(hex)},${a})`; }
 
-// Mix two hex colors, t in [0,1].
+// color -> "r,g,b"
+export function rgb(c) { const [r, g, b] = parseRGB(c); return `${r},${g},${b}`; }
+export function rgba(c, a) { return `rgba(${rgb(c)},${a})`; }
+
+// Mix two colors (hex or rgb()), t in [0,1].
 export function mixHex(h1, h2, t) {
-  const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16);
-  const r = Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, t));
-  const g = Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, t));
-  const bl = Math.round(lerp(a & 255, b & 255, t));
+  const a = parseRGB(h1), b = parseRGB(h2);
+  const r = Math.round(lerp(a[0], b[0], t));
+  const g = Math.round(lerp(a[1], b[1], t));
+  const bl = Math.round(lerp(a[2], b[2], t));
   return `rgb(${r},${g},${bl})`;
 }

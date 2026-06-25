@@ -67,6 +67,17 @@ const SFX = {
     sc.forEach((f, i) => tone(f, t + i * 0.12, 0.02, 0.45, 0.6, 'sine', musicBus));
   },
   warn() { tone(330, ctx.currentTime, 0.01, 0.3, 0.18, 'sawtooth'); },
+  mine() {
+    const t = ctx.currentTime;
+    noise(t, 0.5, 0.8, 'lowpass', 900, 1, sfxBus, 90);
+    tone(90, t, 0.005, 0.7, 0.45, 'sawtooth', sfxBus, 38);
+  },
+  chest() { const t = ctx.currentTime; tone(180, t, 0.01, 0.4, 0.12, 'square', sfxBus, 130); noise(t + 0.05, 0.18, 0.3, 'highpass', 2000, 0.7); },
+  reveal() {
+    const t = ctx.currentTime; const sc = [523, 659, 784, 988, 1318];
+    sc.forEach((f, i) => tone(f, t + i * 0.07, 0.01, 0.4, 0.4, 'triangle', musicBus));
+  },
+  equip() { const t = ctx.currentTime; tone(659, t, 0.005, 0.35, 0.09, 'sine'); tone(988, t + 0.06, 0.005, 0.3, 0.12, 'sine'); },
 };
 
 // gentle pentatonic music-box motif scheduled on the loop tick
