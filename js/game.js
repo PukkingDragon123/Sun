@@ -241,10 +241,13 @@ export class Game {
 
   activateSpawners(dt) {
     this.spawnCD = Math.max(0, (this.spawnCD || 0) - dt);
-    const lookX = this.camX + this.view.worldViewW + 120;
+    const rightEdge = this.camX + this.view.worldViewW;
+    const lookX = rightEdge + 120;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < lookX) {
       const s = sp[this.spawnIdx];
+      // drop spawners we've already swum past — nothing pops in behind/on us
+      if (s.x < this.camX - 120) { this.spawnIdx++; continue; }
       if (PREDATOR_TYPES.has(s.type)) {
         // predators arrive ONE AT A TIME, with a cooldown and a concurrent cap —
         // no more being swarmed by sharks and sea lions the instant you arrive.
@@ -253,24 +256,27 @@ export class Game {
         this.spawnCD = 1.1 + Math.random() * 0.9;
       }
       this.spawnIdx++;
-      this.spawnOne(s);
+      // predators always slide in from just beyond the right edge, never on top
+      // of you — even if pacing held them back while you swam ahead.
+      const sx = PREDATOR_TYPES.has(s.type) ? Math.max(s.x, rightEdge + 60) : s.x;
+      this.spawnOne(s, sx);
     }
   }
 
-  spawnOne(s) {
+  spawnOne(s, x) {
     switch (s.type) {
-      case 'seal': this.enemies.push(new Seal(s.x, s.y)); break;
-      case 'shark': this.enemies.push(new Shark(s.x, s.y)); break;
-      case 'orca': this.enemies.push(new Shark(s.x, s.y, { big: true })); break;
-      case 'barracuda': this.enemies.push(new Barracuda(s.x, s.y)); break;
-      case 'angler': this.enemies.push(new Angler(s.x, s.y)); break;
-      case 'swordfish': this.enemies.push(new Swordfish(s.x, s.y)); break;
-      case 'cookiecutter': this.enemies.push(new Cookiecutter(s.x, s.y)); break;
-      case 'puffer': this.puffers.push(new Puffer(s.x, s.y)); break;
-      case 'squid': this.squids.push(new Squid(s.x, s.y)); break;
-      case 'copepod': this.copepods.push(new Copepod(s.x, s.y)); break;
-      case 'jelly': this.jellies.push(new Jelly(s.x, s.y)); break;
-      case 'boat': this.boats.push(new Boat(s.x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir)); break;
+      case 'seal': this.enemies.push(new Seal(x, s.y)); break;
+      case 'shark': this.enemies.push(new Shark(x, s.y)); break;
+      case 'orca': this.enemies.push(new Shark(x, s.y, { big: true })); break;
+      case 'barracuda': this.enemies.push(new Barracuda(x, s.y)); break;
+      case 'angler': this.enemies.push(new Angler(x, s.y)); break;
+      case 'swordfish': this.enemies.push(new Swordfish(x, s.y)); break;
+      case 'cookiecutter': this.enemies.push(new Cookiecutter(x, s.y)); break;
+      case 'puffer': this.puffers.push(new Puffer(x, s.y)); break;
+      case 'squid': this.squids.push(new Squid(x, s.y)); break;
+      case 'copepod': this.copepods.push(new Copepod(x, s.y)); break;
+      case 'jelly': this.jellies.push(new Jelly(x, s.y)); break;
+      case 'boat': this.boats.push(new Boat(x + (s.dir < 0 ? this.view.worldViewW : 0), s.dir)); break;
     }
   }
 
@@ -508,13 +514,14 @@ export class Game {
     if (this.player.wounds.length && Math.random() < 0.4) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, 'blood', (Math.random() - 0.5) * 20, 24, { life: 1.4 });
     const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
     this.camX = lerp(this.camX, camTarget, clamp(dt * 2, 0, 1));
-    if (this.dyingT > 2.6 || (Input.takeTap() || Input.anyJustPressed())) this.state = 'dead';
+    Input.takeTap(); Input.anyJustPressed();   // death is unskippable — flush & ignore input
+    if (this.dyingT > 2.6) this.state = 'dead';
   }
 
   // intro: a hopeful egg hatches, you swim with your sibling, the sea takes them
   updateIntro(dt) {
+    Input.takeTap(); Input.anyJustPressed();   // the intro is unskippable — flush & ignore input
     this.introT += dt;
-    if (Input.takeTap() || Input.anyJustPressed()) this.introT = Math.max(this.introT, 12.4);
     if (this.introT >= 13.2) { Audio.unlock(); this.beginPlay(); }
   }
 
@@ -784,8 +791,7 @@ export class Game {
     const line = T < 3.0 ? STR.intro.egg : T < 4.6 ? STR.intro.hatch : T < 8.4 ? STR.intro.siblings : STR.intro.loss;
     ctx.globalAlpha = 0.92; ctx.font = FONT(19, '700'); ctx.fillStyle = P.foam;
     line.split('\n').forEach((ln, i) => ctx.fillText(ln, cx, h * 0.78 + i * 26));
-    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(this.t * 3); ctx.font = FONT(12, '600'); ctx.fillStyle = rgba(P.foam, 0.7);
-    ctx.fillText(STR.intro.skip, cx, h * 0.93); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
     if (T > 12.4) { ctx.fillStyle = rgba('#04101c', clamp((T - 12.4) / 0.8, 0, 1) * 0.85); ctx.fillRect(0, 0, w, h); }
   }
   drawTinyHeart(ctx, x, y, s) {
