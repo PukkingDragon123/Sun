@@ -126,15 +126,15 @@ export const WORLD = {
 // these directly "make the long stage easier": Grace (faster), Head Start
 // (begin further along), Second Wind (a free revive).
 export const UPGRADES = [
-  { id: 'vitality',  name: 'Blubber',       desc: '+1 maximum heart',                 max: 4, baseCost: 60,  step: 55 },
-  { id: 'grace',     name: 'Grace',         desc: 'Swim faster — cross sooner',        max: 5, baseCost: 45,  step: 38 },
-  { id: 'dash',      name: 'Flick Dash',    desc: 'Unlock & sharpen the dash',         max: 3, baseCost: 55,  step: 55 },
-  { id: 'slip',      name: 'Slippery Skin', desc: 'Wriggle free of nets & grabs',      max: 3, baseCost: 50,  step: 44 },
-  { id: 'roe',       name: 'Lucky Roe',     desc: 'Gather more eggs from food',         max: 5, baseCost: 40,  step: 34 },
-  { id: 'magnet',    name: 'Gill Magnet',   desc: 'Draw nearby food toward you',        max: 3, baseCost: 55,  step: 50 },
-  { id: 'armor',     name: 'Thick Hide',    desc: 'Longer mercy after a hit',           max: 3, baseCost: 55,  step: 50 },
-  { id: 'headstart', name: 'Head Start',    desc: 'Begin one region further along',     max: 4, baseCost: 85,  step: 80 },
-  { id: 'wind',      name: 'Second Wind',   desc: 'Revive once per run, for free',      max: 1, baseCost: 240, step: 0 },
+  { id: 'vitality',  name: 'Extra Heart',  desc: 'One more heart',          max: 4, baseCost: 60,  step: 55 },
+  { id: 'grace',     name: 'Speed',        desc: 'Swim faster',             max: 5, baseCost: 45,  step: 38 },
+  { id: 'dash',      name: 'Dash',         desc: 'Unlock a quick dash',     max: 3, baseCost: 55,  step: 55 },
+  { id: 'slip',      name: 'Slippery',     desc: 'Escape nets faster',      max: 3, baseCost: 50,  step: 44 },
+  { id: 'roe',       name: 'More Eggs',    desc: 'Gather extra eggs',       max: 5, baseCost: 40,  step: 34 },
+  { id: 'magnet',    name: 'Magnet',       desc: 'Pull in nearby food',     max: 3, baseCost: 55,  step: 50 },
+  { id: 'armor',     name: 'Tough Skin',   desc: 'Safer after a hit',       max: 3, baseCost: 55,  step: 50 },
+  { id: 'headstart', name: 'Head Start',   desc: 'Start further along',     max: 4, baseCost: 85,  step: 80 },
+  { id: 'wind',      name: 'Second Wind',  desc: 'Revive once, free',       max: 1, baseCost: 240, step: 0 },
 ];
 
 // ---- cosmetics: skins + loot boxes -----------------------------------------

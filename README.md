@@ -1,8 +1,12 @@
-# 🐡 Sunfish: A Useless Odyssey
+# 🐡 The Useless Fish
 
-A hand-painted 2D survival-roguelike. You play the **ocean sunfish (Mola mola)** —
-widely libeled as the most useless fish in the sea — dragging your wobbly bulk
-from the **Atlantic to the Pacific** to lay your eggs. The ocean has other plans.
+*made with love by Pukking Dragon*
+
+A hand-painted 2D survival-roguelike about the **ocean sunfish (Mola mola)** —
+widely libeled as the most useless fish in the sea (it isn't: it's the heaviest
+bony fish alive and can lay 300 million eggs). Drag your wobbly bulk from the
+**Atlantic to the Pacific** to spawn. The ocean has other plans — and real
+sunfish facts drift by the whole way.
 
 ## ▶ Play in your browser (no install)
 

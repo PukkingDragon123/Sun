@@ -22,7 +22,6 @@ import { STR } from './strings.js';
 const SAVE_KEY = 'sunfish.useless.v2';
 const FONT = (s, w = '700') => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
 const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
-const UPGRADE_ICON = { vitality: '♥', grace: '✦', dash: '»', slip: '◆', roe: '●', magnet: '✚', armor: '▰', headstart: '★', wind: '↺' };
 const PREDATOR_TYPES = new Set(['seal', 'shark', 'orca', 'barracuda', 'angler', 'swordfish', 'cookiecutter', 'squid']);
 
 function freshSave() {
@@ -63,6 +62,51 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+// word-wrap centered text; returns the y after the last line
+function wrapText(ctx, text, x, y, maxW, lineH) {
+  const words = String(text).split(' '); let line = '', yy = y;
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxW && line) { ctx.fillText(line, x, yy); line = word; yy += lineH; }
+    else line = test;
+  }
+  ctx.fillText(line, x, yy); return yy;
+}
+// little hand-drawn vector icons for each upgrade (no emoji = less generic)
+function drawUpgradeIcon(ctx, id, cx, cy, R, col) {
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Math.max(2, R * 0.2); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  switch (id) {
+    case 'vitality':
+      ctx.beginPath(); ctx.moveTo(0, 0.5 * R);
+      ctx.bezierCurveTo(-1.1 * R, -0.35 * R, -0.45 * R, -0.95 * R, 0, -0.3 * R);
+      ctx.bezierCurveTo(0.45 * R, -0.95 * R, 1.1 * R, -0.35 * R, 0, 0.5 * R); ctx.fill(); break;
+    case 'grace': case 'headstart': {
+      const n = id === 'headstart' ? 2 : 3; ctx.lineWidth = R * 0.24;
+      for (let i = 0; i < n; i++) { const ox = (i - (n - 1) / 2) * R * 0.55; ctx.beginPath(); ctx.moveTo(ox - 0.25 * R, -0.5 * R); ctx.lineTo(ox + 0.25 * R, 0); ctx.lineTo(ox - 0.25 * R, 0.5 * R); ctx.stroke(); } break;
+    }
+    case 'dash':
+      ctx.beginPath(); ctx.moveTo(0.18 * R, -0.7 * R); ctx.lineTo(-0.4 * R, 0.08 * R); ctx.lineTo(0.0, 0.08 * R); ctx.lineTo(-0.12 * R, 0.7 * R); ctx.lineTo(0.42 * R, -0.12 * R); ctx.lineTo(0.06 * R, -0.12 * R); ctx.closePath(); ctx.fill(); break;
+    case 'slip':
+      ctx.beginPath(); ctx.moveTo(0, -0.75 * R); ctx.bezierCurveTo(0.6 * R, -0.1 * R, 0.5 * R, 0.6 * R, 0, 0.6 * R); ctx.bezierCurveTo(-0.5 * R, 0.6 * R, -0.6 * R, -0.1 * R, 0, -0.75 * R); ctx.fill(); break;
+    case 'roe':
+      for (const [px, py] of [[-0.32, 0.12], [0.32, 0.12], [0, -0.32], [0, 0.5]]) { ctx.beginPath(); ctx.arc(px * R, py * R, 0.24 * R, 0, TAU); ctx.fill(); } break;
+    case 'magnet':
+      ctx.lineWidth = R * 0.34; ctx.beginPath(); ctx.arc(0, -0.05 * R, 0.5 * R, Math.PI, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-0.5 * R, -0.05 * R); ctx.lineTo(-0.5 * R, 0.5 * R); ctx.moveTo(0.5 * R, -0.05 * R); ctx.lineTo(0.5 * R, 0.5 * R); ctx.stroke();
+      ctx.fillStyle = '#e2604f'; ctx.fillRect(-0.67 * R, 0.42 * R, 0.34 * R, 0.16 * R);
+      ctx.fillStyle = '#dfe7ea'; ctx.fillRect(0.33 * R, 0.42 * R, 0.34 * R, 0.16 * R); break;
+    case 'armor':
+      ctx.beginPath(); ctx.moveTo(0, -0.72 * R); ctx.lineTo(0.6 * R, -0.45 * R); ctx.lineTo(0.5 * R, 0.3 * R); ctx.lineTo(0, 0.72 * R); ctx.lineTo(-0.5 * R, 0.3 * R); ctx.lineTo(-0.6 * R, -0.45 * R); ctx.closePath(); ctx.fill(); break;
+    case 'wind': {
+      ctx.lineWidth = R * 0.2; ctx.beginPath(); ctx.arc(0, 0, 0.5 * R, Math.PI * 0.45, Math.PI * 2.05); ctx.stroke();
+      const a = Math.PI * 2.05, ax = Math.cos(a) * 0.5 * R, ay = Math.sin(a) * 0.5 * R;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - 0.22 * R, ay - 0.04 * R); ctx.moveTo(ax, ay); ctx.lineTo(ax + 0.02 * R, ay - 0.24 * R); ctx.stroke(); break;
+    }
+    default: ctx.beginPath(); ctx.arc(0, 0, 0.4 * R, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
 }
 
 export class Game {
@@ -483,6 +527,7 @@ export class Game {
       this.save.laidTotal = (this.save.laidTotal || 0) + this.eggsTarget;
       this.save.wins = (this.save.wins || 0) + 1;
       this.save.best = this.world.goal; this.runBanked = true; this.persist();
+      this.ending = this.pickEnding();
       this.state = 'win';
     }
   }
@@ -922,37 +967,45 @@ export class Game {
   }
   button(ctx, id, x, y, w, h, label, enabled = true, accent = false) {
     this._buttons.push({ id, x, y, w, h });
-    ctx.fillStyle = enabled ? (accent ? rgba(P.amber, 0.92) : rgba('#2e6f80', 0.95)) : 'rgba(120,120,120,0.3)';
-    roundRect(ctx, x, y, w, h, 10); ctx.fill();
-    ctx.strokeStyle = P.ink; ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = enabled ? (accent ? '#3a2a10' : P.foam) : 'rgba(255,255,255,0.5)';
+    const r = Math.min(13, h / 2);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    const top = enabled ? (accent ? '#ffd574' : '#4393a8') : 'rgba(110,120,128,0.32)';
+    const bot = enabled ? (accent ? '#e7a32c' : '#22596a') : 'rgba(86,96,104,0.28)';
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, top); g.addColorStop(1, bot);
+    ctx.fillStyle = g; roundRect(ctx, x, y, w, h, r); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = rgba(P.ink, 0.85); ctx.lineWidth = 2; roundRect(ctx, x, y, w, h, r); ctx.stroke();
+    if (enabled) { ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1.5; roundRect(ctx, x + 2.5, y + 2.5, w - 5, h * 0.5, r - 2); ctx.stroke(); }
+    ctx.fillStyle = enabled ? (accent ? '#3a2a10' : '#f3fbfc') : 'rgba(255,255,255,0.5)';
     ctx.font = FONT(15, '800'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(label, x + w / 2, y + h / 2 + 1);
   }
 
   renderMenu(ctx, view) {
     const { w, h } = view;
-    ctx.textAlign = 'center';
-    wobblyText(ctx, STR.title, w / 2, h * 0.18, Math.min(72, w * 0.13), P.foam, 2);
-    ctx.font = FONT(18, '600'); ctx.fillStyle = P.amberSoft; ctx.textBaseline = 'middle';
-    ctx.fillText(STR.subtitle, w / 2, h * 0.18 + Math.min(54, w * 0.1));
-    ctx.font = FONT(14, '500'); ctx.fillStyle = rgba(P.foam, 0.8);
-    ctx.fillText(STR.tagline, w / 2, h * 0.74);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    wobblyText(ctx, STR.title, w / 2, h * 0.17, Math.min(58, w * 0.105), P.foam, 2);
+    ctx.font = FONT(15, '600'); ctx.fillStyle = P.amberSoft;
+    ctx.fillText(STR.subtitle, w / 2, h * 0.17 + Math.min(44, w * 0.08));
     ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 2.5);
     ctx.font = FONT(17, '700'); ctx.fillStyle = P.foam;
-    ctx.fillText(STR.tapToStart, w / 2, h * 0.81); ctx.globalAlpha = 1;
-    ctx.font = FONT(12, '500'); ctx.fillStyle = rgba(P.foam, 0.6);
-    ctx.fillText(STR.dragHint + '  ·  ' + STR.keyHint, w / 2, h * 0.87);
-    ctx.font = FONT(13, '600'); ctx.fillStyle = P.amberSoft;
+    ctx.fillText(STR.tapToStart, w / 2, h * 0.72); ctx.globalAlpha = 1;
+    // a rotating real sunfish fact — genuinely educational
+    const fact = STR.funFacts[Math.floor(this.t / 6) % STR.funFacts.length];
+    ctx.font = FONT(11, '800'); ctx.fillStyle = P.amberSoft; ctx.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.79);
+    ctx.font = FONT(12.5, '500'); ctx.fillStyle = rgba(P.foam, 0.82); wrapText(ctx, fact, w / 2, h * 0.83, Math.min(560, w * 0.8), 16);
+    ctx.font = FONT(12, '600'); ctx.fillStyle = P.amberSoft;
     const pct = Math.round((this.save.best / WORLD.goalDistance) * 100);
-    ctx.fillText(`🥚 ${this.save.eggs.toLocaleString()} ${STR.shopBanked}   ·   ${(this.save.laidTotal || 0).toLocaleString()} laid   ·   ${STR.hudBest} ${pct}%`, w / 2, h * 0.93);
+    ctx.fillText(`${this.save.eggs.toLocaleString()} eggs banked   ·   ${(this.save.laidTotal || 0).toLocaleString()} laid   ·   furthest ${pct}%`, w / 2, h * 0.93);
+    ctx.font = FONT(11, '600'); ctx.fillStyle = rgba(P.foam, 0.55); ctx.fillText(STR.credit, w / 2, h * 0.975);
 
     const bw = Math.min(150, w * 0.26), bh = 44, gap = 12;
     const totalW = bw * 3 + gap * 2; let bx = w / 2 - totalW / 2; const by = h * 0.55;
-    this.button(ctx, 'shop', bx, by, bw, bh, '⚓ ' + STR.toShop); bx += bw + gap;
-    this.button(ctx, 'wardrobe', bx, by, bw, bh, '🐟 ' + STR.toWardrobe); bx += bw + gap;
-    this.button(ctx, 'loot', bx, by, bw, bh, '🦪 ' + STR.toLoot);
-    this.button(ctx, 'mute', w - 110 - 12, 12, 110, 34, Audio.isMuted() ? '🔇 ' + STR.muted : '🔊 ' + STR.unmuted);
+    this.button(ctx, 'shop', bx, by, bw, bh, STR.toShop); bx += bw + gap;
+    this.button(ctx, 'wardrobe', bx, by, bw, bh, STR.toWardrobe); bx += bw + gap;
+    this.button(ctx, 'loot', bx, by, bw, bh, STR.toLoot);
+    this.button(ctx, 'mute', w - 110 - 12, 12, 110, 34, Audio.isMuted() ? STR.muted : STR.unmuted);
   }
 
   renderShop(ctx, view) {
@@ -988,8 +1041,7 @@ export class Game {
       // icon chip
       ctx.fillStyle = rgba(maxed ? P.amber : '#2e6f80', 0.92); roundRect(ctx, px + 18, mid - 15, 30, 30, 8); ctx.fill();
       ctx.strokeStyle = rgba(P.ink, 0.6); ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = maxed ? '#3a2a10' : P.foam; ctx.font = FONT(16, '800'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(UPGRADE_ICON[u.id] || '★', px + 33, mid + 1);
+      drawUpgradeIcon(ctx, u.id, px + 33, mid, 10, maxed ? '#3a2a10' : '#f3fbfc');
       // name + desc
       ctx.textAlign = 'left';
       ctx.font = FONT(14, '800'); ctx.fillStyle = P.foam; ctx.fillText(u.name, px + 58, mid - 9);
@@ -1082,18 +1134,37 @@ export class Game {
     }
   }
 
+  pickEnding() {
+    const e = STR.endings;
+    if (this.eggsTarget >= 300) return e.bountiful;
+    if (this.runHits === 0) return e.perfect;
+    if (this.player.wounds.length >= 4) return e.battered;
+    return e.plain;
+  }
   renderWin(ctx, view) {
     const { w, h } = view;
     ctx.fillStyle = rgba('#06243a', 0.5); ctx.fillRect(0, 0, w, h);
-    wobblyText(ctx, STR.win, w / 2, h * 0.22, Math.min(56, w * 0.1), P.amberSoft, 4);
+    const end = this.ending || STR.endings.plain;
+    wobblyText(ctx, end.title, w / 2, h * 0.18, Math.min(48, w * 0.092), P.amberSoft, 4);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = FONT(16, '600'); ctx.fillStyle = P.foam; ctx.fillText(STR.winSub, w / 2, h * 0.33);
-    ctx.font = FONT(24, '800'); ctx.fillStyle = P.amber; ctx.fillText(STR.eggsLaid(this.eggsTarget), w / 2, h * 0.44);
-    ctx.font = FONT(13, '600'); ctx.fillStyle = rgba(P.amberSoft, 0.95); ctx.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), w / 2, h * 0.52);
-    ctx.font = FONT(13, '500'); ctx.fillStyle = rgba(P.foam, 0.8); ctx.fillText(STR.winFunFact, w / 2, h * 0.58);
-    this.button(ctx, 'retry', w / 2 - 190, h * 0.7, 116, 44, '↺ ' + STR.retry, true, true);
-    this.button(ctx, 'wardrobe', w / 2 - 58, h * 0.7, 116, 44, '🐟 ' + STR.toWardrobe);
-    this.button(ctx, 'shop', w / 2 + 74, h * 0.7, 116, 44, '⚓ ' + STR.toShop);
+    ctx.font = FONT(15, '600'); ctx.fillStyle = P.foam; wrapText(ctx, end.line, w / 2, h * 0.28, Math.min(640, w * 0.84), 20);
+    ctx.font = FONT(23, '800'); ctx.fillStyle = P.amber; ctx.fillText(STR.eggsLaid(this.eggsTarget), w / 2, h * 0.41);
+    ctx.font = FONT(12, '600'); ctx.fillStyle = rgba(P.amberSoft, 0.95); ctx.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), w / 2, h * 0.47);
+    // your useless legacy — a few hatchlings drift up
+    for (let i = 0; i < 6; i++) {
+      const rise = (this.t * 16 + i * 70) % (h * 0.4);
+      const bx = w / 2 + Math.sin(i * 1.7 + this.t * 0.6) * w * 0.2;
+      const by = h * 0.7 - rise * 0.28;
+      ctx.save(); ctx.translate(bx, by); ctx.scale(0.5, 0.5); ctx.globalAlpha = 0.75;
+      drawSunfish(ctx, 14, this.t, { flap: this.menuFlap * 2 + i, blink: 1, lookX: 1, skin: this.skinObj() });
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.font = FONT(11, '800'); ctx.fillStyle = P.amberSoft; ctx.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.54);
+    ctx.font = FONT(12, '500'); ctx.fillStyle = rgba(P.foam, 0.82); wrapText(ctx, this.funFact, w / 2, h * 0.585, Math.min(640, w * 0.84), 16);
+    this.button(ctx, 'retry', w / 2 - 190, h * 0.82, 116, 44, STR.retry, true, true);
+    this.button(ctx, 'wardrobe', w / 2 - 58, h * 0.82, 116, 44, STR.toWardrobe);
+    this.button(ctx, 'shop', w / 2 + 74, h * 0.82, 116, 44, STR.toShop);
   }
 
   renderDead(ctx, view) {
@@ -1102,16 +1173,17 @@ export class Game {
     wobblyText(ctx, STR.deathTitle, w / 2, h * 0.24, Math.min(48, w * 0.09), '#e8a0a0', 7);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = FONT(17, '600'); ctx.fillStyle = P.foam; ctx.fillText(this.deathMsg, w / 2, h * 0.35);
-    ctx.font = FONT(13, '500'); ctx.fillStyle = rgba(P.foam, 0.7); ctx.fillText('🐟 ' + this.funFact, w / 2, h * 0.43);
-    ctx.font = FONT(14, '700'); ctx.fillStyle = P.amberSoft;
+    ctx.font = FONT(11, '800'); ctx.fillStyle = P.amberSoft; ctx.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.42);
+    ctx.font = FONT(12.5, '500'); ctx.fillStyle = rgba(P.foam, 0.78); wrapText(ctx, this.funFact, w / 2, h * 0.46, Math.min(640, w * 0.84), 16);
+    ctx.font = FONT(13, '700'); ctx.fillStyle = P.amberSoft;
     const pct = Math.round((this.player.x / WORLD.goalDistance) * 100);
-    ctx.fillText(`+${Math.floor(this.runEggs)} 🥚 banked   ·   reached ${pct}% · ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.5);
+    ctx.fillText(`+${Math.floor(this.runEggs)} eggs banked   ·   reached ${pct}% · ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.56);
     const free = this.stats().wind > 0 && !this.usedWind;
     const canRevive = free || this.save.eggs >= this.reviveCost;
     let bx = w / 2 - (canRevive ? 250 : 125);
-    if (canRevive) { this.button(ctx, 'revive', bx, h * 0.62, 130, 44, free ? STR.continueFree : STR.continueBtn(this.reviveCost), true, true); bx += 142; }
-    this.button(ctx, 'retry', bx, h * 0.62, 116, 44, '↺ ' + STR.retry, true, !canRevive); bx += 128;
-    this.button(ctx, 'shop', bx, h * 0.62, 116, 44, '⚓ ' + STR.toShop);
+    if (canRevive) { this.button(ctx, 'revive', bx, h * 0.66, 130, 44, free ? STR.continueFree : STR.continueBtn(this.reviveCost), true, true); bx += 142; }
+    this.button(ctx, 'retry', bx, h * 0.66, 116, 44, STR.retry, true, !canRevive); bx += 128;
+    this.button(ctx, 'shop', bx, h * 0.66, 116, 44, STR.toShop);
   }
 
   entityCount() {

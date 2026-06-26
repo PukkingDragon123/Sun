@@ -1,11 +1,11 @@
 // All player-visible strings live here (game-design-system §10.3).
 // Switching language is a data change, never a code change.
 export const STR = {
-  title: 'SUNFISH',
-  subtitle: 'a useless odyssey',
-  tagline: 'The ocean’s least competent fish has somewhere to be.',
+  title: 'THE USELESS FISH',
+  subtitle: 'the ocean sunfish · Mola mola',
+  credit: 'made with love by Pukking Dragon',
 
-  tapToStart: 'tap · click · press to begin the crossing',
+  tapToStart: 'tap · click · press to begin',
   dragHint: 'Drag anywhere to swim — flick to dash',
   keyHint: 'or use WASD / arrows / a gamepad stick',
 
@@ -61,11 +61,16 @@ export const STR = {
   zoneEnter: (n) => n,
   checkpoint: (n) => `${n} — checkpoint reached`,
 
-  win: 'YOU MADE IT.',
-  winSub: 'Against all reason, the useless fish crosses an ocean.',
+  // multiple endings, chosen from how the run went
+  endings: {
+    plain:     { title: 'YOU MADE IT.',            line: 'Against all reason, the useless fish crosses an ocean.' },
+    perfect:   { title: 'NOT A SCRATCH.',          line: 'A flawless crossing by the sea’s least likely athlete.' },
+    battered:  { title: 'BATTERED, BUT HOME.',     line: 'Scarred, exhausted, and somehow still drifting.' },
+    bountiful: { title: 'A MILLION USELESS BABIES.', line: 'Your clutch scatters into the blue. Most won’t make it — a few just might.' },
+  },
   eggsLaid: (n) => `${n.toLocaleString()} eggs drift into the blue`,
-  winFunFact: 'A real sunfish can lay 300 million eggs. You did your best.',
-  lifetimeEggs: (n) => `${n.toLocaleString()} eggs laid in all your lifetimes`,
+  lifetimeEggs: (n) => `${n.toLocaleString()} eggs laid across all your lifetimes`,
+  didYouKnow: 'did you know?',
 
   deaths: [
     'A sea lion had a snack. You were the snack.',
@@ -101,13 +106,17 @@ export const STR = {
   unmuted: 'sound on',
   rotate: 'Turn your device — this fish prefers landscape.',
 
+  // real ocean-sunfish facts — useless-looking, secretly amazing
   funFacts: [
-    'The ocean sunfish (Mola mola) is the heaviest bony fish alive.',
-    'It mostly eats jellyfish, which are basically water.',
-    'Sailors thought it was a head with no body. Rude, but fair.',
-    'It sunbathes on its side at the surface. That’s the whole plan.',
-    'Seabirds land on it to pick off its parasites. Free spa.',
-    'A sunfish can dive past 600 m into the cold dark, then warm up on top.',
-    'Baby sunfish look like tiny spiky snowflakes. They grow 60 million times.',
+    'The ocean sunfish (Mola mola) is the heaviest bony fish on Earth — up to 1,000 kg.',
+    'It eats mostly jellyfish, which are about 95% water — so it dines on almost nothing.',
+    'A female can release up to 300 million eggs at once — more than any other vertebrate.',
+    'Newborn sunfish are about 2.5 mm long and grow up to 60 million times their birth weight.',
+    'It has no real tail — just a frilly rudder called a clavus. That’s why steering is so clumsy.',
+    'It basks on its side at the surface to rewarm after deep, cold dives past 600 m.',
+    'Seabirds and cleaner fish pick parasites off its skin — it can carry dozens of species.',
+    'Sailors called it the “swimming head” — a fish that looks like it forgot to grow a body.',
+    'Useless-looking, but it dives over 800 m and crosses entire oceans. A secretly mighty icon.',
+    'Its thick, rubbery skin can be several cm deep — hard for many predators to bite through.',
   ],
 };

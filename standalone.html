@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#0a2238" />
-<title>Sunfish: A Useless Odyssey</title>
+<title>The Useless Fish</title>
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#0a2238;overscroll-behavior:none}
 canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
@@ -171,15 +171,15 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ]
   };
   var UPGRADES = [
-    { id: "vitality", name: "Blubber", desc: "+1 maximum heart", max: 4, baseCost: 60, step: 55 },
-    { id: "grace", name: "Grace", desc: "Swim faster \u2014 cross sooner", max: 5, baseCost: 45, step: 38 },
-    { id: "dash", name: "Flick Dash", desc: "Unlock & sharpen the dash", max: 3, baseCost: 55, step: 55 },
-    { id: "slip", name: "Slippery Skin", desc: "Wriggle free of nets & grabs", max: 3, baseCost: 50, step: 44 },
-    { id: "roe", name: "Lucky Roe", desc: "Gather more eggs from food", max: 5, baseCost: 40, step: 34 },
-    { id: "magnet", name: "Gill Magnet", desc: "Draw nearby food toward you", max: 3, baseCost: 55, step: 50 },
-    { id: "armor", name: "Thick Hide", desc: "Longer mercy after a hit", max: 3, baseCost: 55, step: 50 },
-    { id: "headstart", name: "Head Start", desc: "Begin one region further along", max: 4, baseCost: 85, step: 80 },
-    { id: "wind", name: "Second Wind", desc: "Revive once per run, for free", max: 1, baseCost: 240, step: 0 }
+    { id: "vitality", name: "Extra Heart", desc: "One more heart", max: 4, baseCost: 60, step: 55 },
+    { id: "grace", name: "Speed", desc: "Swim faster", max: 5, baseCost: 45, step: 38 },
+    { id: "dash", name: "Dash", desc: "Unlock a quick dash", max: 3, baseCost: 55, step: 55 },
+    { id: "slip", name: "Slippery", desc: "Escape nets faster", max: 3, baseCost: 50, step: 44 },
+    { id: "roe", name: "More Eggs", desc: "Gather extra eggs", max: 5, baseCost: 40, step: 34 },
+    { id: "magnet", name: "Magnet", desc: "Pull in nearby food", max: 3, baseCost: 55, step: 50 },
+    { id: "armor", name: "Tough Skin", desc: "Safer after a hit", max: 3, baseCost: 55, step: 50 },
+    { id: "headstart", name: "Head Start", desc: "Start further along", max: 4, baseCost: 85, step: 80 },
+    { id: "wind", name: "Second Wind", desc: "Revive once, free", max: 1, baseCost: 240, step: 0 }
   ];
   var RARITY = {
     common: { label: "Common", color: "#cdd7da", weight: 60, refund: 22 },
@@ -3850,10 +3850,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
 
   // js/strings.js
   var STR = {
-    title: "SUNFISH",
-    subtitle: "a useless odyssey",
-    tagline: "The ocean\u2019s least competent fish has somewhere to be.",
-    tapToStart: "tap \xB7 click \xB7 press to begin the crossing",
+    title: "THE USELESS FISH",
+    subtitle: "the ocean sunfish \xB7 Mola mola",
+    credit: "made with love by Pukking Dragon",
+    tapToStart: "tap \xB7 click \xB7 press to begin",
     dragHint: "Drag anywhere to swim \u2014 flick to dash",
     keyHint: "or use WASD / arrows / a gamepad stick",
     goalAtlantic: "ATLANTIC",
@@ -3901,11 +3901,16 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     deathSink: "down you go\u2026",
     zoneEnter: (n) => n,
     checkpoint: (n) => `${n} \u2014 checkpoint reached`,
-    win: "YOU MADE IT.",
-    winSub: "Against all reason, the useless fish crosses an ocean.",
+    // multiple endings, chosen from how the run went
+    endings: {
+      plain: { title: "YOU MADE IT.", line: "Against all reason, the useless fish crosses an ocean." },
+      perfect: { title: "NOT A SCRATCH.", line: "A flawless crossing by the sea\u2019s least likely athlete." },
+      battered: { title: "BATTERED, BUT HOME.", line: "Scarred, exhausted, and somehow still drifting." },
+      bountiful: { title: "A MILLION USELESS BABIES.", line: "Your clutch scatters into the blue. Most won\u2019t make it \u2014 a few just might." }
+    },
     eggsLaid: (n) => `${n.toLocaleString()} eggs drift into the blue`,
-    winFunFact: "A real sunfish can lay 300 million eggs. You did your best.",
-    lifetimeEggs: (n) => `${n.toLocaleString()} eggs laid in all your lifetimes`,
+    lifetimeEggs: (n) => `${n.toLocaleString()} eggs laid across all your lifetimes`,
+    didYouKnow: "did you know?",
     deaths: [
       "A sea lion had a snack. You were the snack.",
       "Splat. Rocks: 1, Fish: 0.",
@@ -3938,14 +3943,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     muted: "sound off",
     unmuted: "sound on",
     rotate: "Turn your device \u2014 this fish prefers landscape.",
+    // real ocean-sunfish facts — useless-looking, secretly amazing
     funFacts: [
-      "The ocean sunfish (Mola mola) is the heaviest bony fish alive.",
-      "It mostly eats jellyfish, which are basically water.",
-      "Sailors thought it was a head with no body. Rude, but fair.",
-      "It sunbathes on its side at the surface. That\u2019s the whole plan.",
-      "Seabirds land on it to pick off its parasites. Free spa.",
-      "A sunfish can dive past 600 m into the cold dark, then warm up on top.",
-      "Baby sunfish look like tiny spiky snowflakes. They grow 60 million times."
+      "The ocean sunfish (Mola mola) is the heaviest bony fish on Earth \u2014 up to 1,000 kg.",
+      "It eats mostly jellyfish, which are about 95% water \u2014 so it dines on almost nothing.",
+      "A female can release up to 300 million eggs at once \u2014 more than any other vertebrate.",
+      "Newborn sunfish are about 2.5 mm long and grow up to 60 million times their birth weight.",
+      "It has no real tail \u2014 just a frilly rudder called a clavus. That\u2019s why steering is so clumsy.",
+      "It basks on its side at the surface to rewarm after deep, cold dives past 600 m.",
+      "Seabirds and cleaner fish pick parasites off its skin \u2014 it can carry dozens of species.",
+      "Sailors called it the \u201Cswimming head\u201D \u2014 a fish that looks like it forgot to grow a body.",
+      "Useless-looking, but it dives over 800 m and crosses entire oceans. A secretly mighty icon.",
+      "Its thick, rubbery skin can be several cm deep \u2014 hard for many predators to bite through."
     ]
   };
 
@@ -3953,7 +3962,6 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   var SAVE_KEY = "sunfish.useless.v2";
   var FONT = (s, w = "700") => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
   var SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
-  var UPGRADE_ICON = { vitality: "\u2665", grace: "\u2726", dash: "\xBB", slip: "\u25C6", roe: "\u25CF", magnet: "\u271A", armor: "\u25B0", headstart: "\u2605", wind: "\u21BA" };
   var PREDATOR_TYPES = /* @__PURE__ */ new Set(["seal", "shark", "orca", "barracuda", "angler", "swordfish", "cookiecutter", "squid"]);
   function freshSave() {
     return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
@@ -4015,6 +4023,123 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ctx3.arcTo(x, y + h, x, y, r);
     ctx3.arcTo(x, y, x + w, y, r);
     ctx3.closePath();
+  }
+  function wrapText(ctx3, text, x, y, maxW, lineH) {
+    const words = String(text).split(" ");
+    let line = "", yy = y;
+    for (const word of words) {
+      const test = line ? line + " " + word : word;
+      if (ctx3.measureText(test).width > maxW && line) {
+        ctx3.fillText(line, x, yy);
+        line = word;
+        yy += lineH;
+      } else line = test;
+    }
+    ctx3.fillText(line, x, yy);
+    return yy;
+  }
+  function drawUpgradeIcon(ctx3, id, cx, cy, R, col) {
+    ctx3.save();
+    ctx3.translate(cx, cy);
+    ctx3.strokeStyle = col;
+    ctx3.fillStyle = col;
+    ctx3.lineWidth = Math.max(2, R * 0.2);
+    ctx3.lineCap = "round";
+    ctx3.lineJoin = "round";
+    switch (id) {
+      case "vitality":
+        ctx3.beginPath();
+        ctx3.moveTo(0, 0.5 * R);
+        ctx3.bezierCurveTo(-1.1 * R, -0.35 * R, -0.45 * R, -0.95 * R, 0, -0.3 * R);
+        ctx3.bezierCurveTo(0.45 * R, -0.95 * R, 1.1 * R, -0.35 * R, 0, 0.5 * R);
+        ctx3.fill();
+        break;
+      case "grace":
+      case "headstart": {
+        const n = id === "headstart" ? 2 : 3;
+        ctx3.lineWidth = R * 0.24;
+        for (let i = 0; i < n; i++) {
+          const ox = (i - (n - 1) / 2) * R * 0.55;
+          ctx3.beginPath();
+          ctx3.moveTo(ox - 0.25 * R, -0.5 * R);
+          ctx3.lineTo(ox + 0.25 * R, 0);
+          ctx3.lineTo(ox - 0.25 * R, 0.5 * R);
+          ctx3.stroke();
+        }
+        break;
+      }
+      case "dash":
+        ctx3.beginPath();
+        ctx3.moveTo(0.18 * R, -0.7 * R);
+        ctx3.lineTo(-0.4 * R, 0.08 * R);
+        ctx3.lineTo(0, 0.08 * R);
+        ctx3.lineTo(-0.12 * R, 0.7 * R);
+        ctx3.lineTo(0.42 * R, -0.12 * R);
+        ctx3.lineTo(0.06 * R, -0.12 * R);
+        ctx3.closePath();
+        ctx3.fill();
+        break;
+      case "slip":
+        ctx3.beginPath();
+        ctx3.moveTo(0, -0.75 * R);
+        ctx3.bezierCurveTo(0.6 * R, -0.1 * R, 0.5 * R, 0.6 * R, 0, 0.6 * R);
+        ctx3.bezierCurveTo(-0.5 * R, 0.6 * R, -0.6 * R, -0.1 * R, 0, -0.75 * R);
+        ctx3.fill();
+        break;
+      case "roe":
+        for (const [px, py] of [[-0.32, 0.12], [0.32, 0.12], [0, -0.32], [0, 0.5]]) {
+          ctx3.beginPath();
+          ctx3.arc(px * R, py * R, 0.24 * R, 0, TAU);
+          ctx3.fill();
+        }
+        break;
+      case "magnet":
+        ctx3.lineWidth = R * 0.34;
+        ctx3.beginPath();
+        ctx3.arc(0, -0.05 * R, 0.5 * R, Math.PI, 0);
+        ctx3.stroke();
+        ctx3.beginPath();
+        ctx3.moveTo(-0.5 * R, -0.05 * R);
+        ctx3.lineTo(-0.5 * R, 0.5 * R);
+        ctx3.moveTo(0.5 * R, -0.05 * R);
+        ctx3.lineTo(0.5 * R, 0.5 * R);
+        ctx3.stroke();
+        ctx3.fillStyle = "#e2604f";
+        ctx3.fillRect(-0.67 * R, 0.42 * R, 0.34 * R, 0.16 * R);
+        ctx3.fillStyle = "#dfe7ea";
+        ctx3.fillRect(0.33 * R, 0.42 * R, 0.34 * R, 0.16 * R);
+        break;
+      case "armor":
+        ctx3.beginPath();
+        ctx3.moveTo(0, -0.72 * R);
+        ctx3.lineTo(0.6 * R, -0.45 * R);
+        ctx3.lineTo(0.5 * R, 0.3 * R);
+        ctx3.lineTo(0, 0.72 * R);
+        ctx3.lineTo(-0.5 * R, 0.3 * R);
+        ctx3.lineTo(-0.6 * R, -0.45 * R);
+        ctx3.closePath();
+        ctx3.fill();
+        break;
+      case "wind": {
+        ctx3.lineWidth = R * 0.2;
+        ctx3.beginPath();
+        ctx3.arc(0, 0, 0.5 * R, Math.PI * 0.45, Math.PI * 2.05);
+        ctx3.stroke();
+        const a = Math.PI * 2.05, ax = Math.cos(a) * 0.5 * R, ay = Math.sin(a) * 0.5 * R;
+        ctx3.beginPath();
+        ctx3.moveTo(ax, ay);
+        ctx3.lineTo(ax - 0.22 * R, ay - 0.04 * R);
+        ctx3.moveTo(ax, ay);
+        ctx3.lineTo(ax + 0.02 * R, ay - 0.24 * R);
+        ctx3.stroke();
+        break;
+      }
+      default:
+        ctx3.beginPath();
+        ctx3.arc(0, 0, 0.4 * R, 0, TAU);
+        ctx3.fill();
+    }
+    ctx3.restore();
   }
   var Game = class {
     constructor() {
@@ -4545,6 +4670,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         this.save.best = this.world.goal;
         this.runBanked = true;
         this.persist();
+        this.ending = this.pickEnding();
         this.state = "win";
       }
     }
@@ -5270,13 +5396,31 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     }
     button(ctx3, id, x, y, w, h, label, enabled = true, accent = false) {
       this._buttons.push({ id, x, y, w, h });
-      ctx3.fillStyle = enabled ? accent ? rgba(PALETTE.amber, 0.92) : rgba("#2e6f80", 0.95) : "rgba(120,120,120,0.3)";
-      roundRect(ctx3, x, y, w, h, 10);
+      const r = Math.min(13, h / 2);
+      ctx3.save();
+      ctx3.shadowColor = "rgba(0,0,0,0.35)";
+      ctx3.shadowBlur = 8;
+      ctx3.shadowOffsetY = 3;
+      const top = enabled ? accent ? "#ffd574" : "#4393a8" : "rgba(110,120,128,0.32)";
+      const bot = enabled ? accent ? "#e7a32c" : "#22596a" : "rgba(86,96,104,0.28)";
+      const g = ctx3.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, top);
+      g.addColorStop(1, bot);
+      ctx3.fillStyle = g;
+      roundRect(ctx3, x, y, w, h, r);
       ctx3.fill();
-      ctx3.strokeStyle = PALETTE.ink;
-      ctx3.lineWidth = 2.5;
+      ctx3.restore();
+      ctx3.strokeStyle = rgba(PALETTE.ink, 0.85);
+      ctx3.lineWidth = 2;
+      roundRect(ctx3, x, y, w, h, r);
       ctx3.stroke();
-      ctx3.fillStyle = enabled ? accent ? "#3a2a10" : PALETTE.foam : "rgba(255,255,255,0.5)";
+      if (enabled) {
+        ctx3.strokeStyle = "rgba(255,255,255,0.28)";
+        ctx3.lineWidth = 1.5;
+        roundRect(ctx3, x + 2.5, y + 2.5, w - 5, h * 0.5, r - 2);
+        ctx3.stroke();
+      }
+      ctx3.fillStyle = enabled ? accent ? "#3a2a10" : "#f3fbfc" : "rgba(255,255,255,0.5)";
       ctx3.font = FONT(15, "800");
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
@@ -5285,36 +5429,40 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     renderMenu(ctx3, view2) {
       const { w, h } = view2;
       ctx3.textAlign = "center";
-      wobblyText(ctx3, STR.title, w / 2, h * 0.18, Math.min(72, w * 0.13), PALETTE.foam, 2);
-      ctx3.font = FONT(18, "600");
-      ctx3.fillStyle = PALETTE.amberSoft;
       ctx3.textBaseline = "middle";
-      ctx3.fillText(STR.subtitle, w / 2, h * 0.18 + Math.min(54, w * 0.1));
-      ctx3.font = FONT(14, "500");
-      ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
-      ctx3.fillText(STR.tagline, w / 2, h * 0.74);
+      wobblyText(ctx3, STR.title, w / 2, h * 0.17, Math.min(58, w * 0.105), PALETTE.foam, 2);
+      ctx3.font = FONT(15, "600");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(STR.subtitle, w / 2, h * 0.17 + Math.min(44, w * 0.08));
       ctx3.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 2.5);
       ctx3.font = FONT(17, "700");
       ctx3.fillStyle = PALETTE.foam;
-      ctx3.fillText(STR.tapToStart, w / 2, h * 0.81);
+      ctx3.fillText(STR.tapToStart, w / 2, h * 0.72);
       ctx3.globalAlpha = 1;
-      ctx3.font = FONT(12, "500");
-      ctx3.fillStyle = rgba(PALETTE.foam, 0.6);
-      ctx3.fillText(STR.dragHint + "  \xB7  " + STR.keyHint, w / 2, h * 0.87);
-      ctx3.font = FONT(13, "600");
+      const fact = STR.funFacts[Math.floor(this.t / 6) % STR.funFacts.length];
+      ctx3.font = FONT(11, "800");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.79);
+      ctx3.font = FONT(12.5, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.82);
+      wrapText(ctx3, fact, w / 2, h * 0.83, Math.min(560, w * 0.8), 16);
+      ctx3.font = FONT(12, "600");
       ctx3.fillStyle = PALETTE.amberSoft;
       const pct = Math.round(this.save.best / WORLD.goalDistance * 100);
-      ctx3.fillText(`\u{1F95A} ${this.save.eggs.toLocaleString()} ${STR.shopBanked}   \xB7   ${(this.save.laidTotal || 0).toLocaleString()} laid   \xB7   ${STR.hudBest} ${pct}%`, w / 2, h * 0.93);
+      ctx3.fillText(`${this.save.eggs.toLocaleString()} eggs banked   \xB7   ${(this.save.laidTotal || 0).toLocaleString()} laid   \xB7   furthest ${pct}%`, w / 2, h * 0.93);
+      ctx3.font = FONT(11, "600");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.55);
+      ctx3.fillText(STR.credit, w / 2, h * 0.975);
       const bw = Math.min(150, w * 0.26), bh = 44, gap = 12;
       const totalW = bw * 3 + gap * 2;
       let bx = w / 2 - totalW / 2;
       const by = h * 0.55;
-      this.button(ctx3, "shop", bx, by, bw, bh, "\u2693 " + STR.toShop);
+      this.button(ctx3, "shop", bx, by, bw, bh, STR.toShop);
       bx += bw + gap;
-      this.button(ctx3, "wardrobe", bx, by, bw, bh, "\u{1F41F} " + STR.toWardrobe);
+      this.button(ctx3, "wardrobe", bx, by, bw, bh, STR.toWardrobe);
       bx += bw + gap;
-      this.button(ctx3, "loot", bx, by, bw, bh, "\u{1F9AA} " + STR.toLoot);
-      this.button(ctx3, "mute", w - 110 - 12, 12, 110, 34, Audio.isMuted() ? "\u{1F507} " + STR.muted : "\u{1F50A} " + STR.unmuted);
+      this.button(ctx3, "loot", bx, by, bw, bh, STR.toLoot);
+      this.button(ctx3, "mute", w - 110 - 12, 12, 110, 34, Audio.isMuted() ? STR.muted : STR.unmuted);
     }
     renderShop(ctx3, view2) {
       const { w, h } = view2;
@@ -5375,11 +5523,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         ctx3.strokeStyle = rgba(PALETTE.ink, 0.6);
         ctx3.lineWidth = 2;
         ctx3.stroke();
-        ctx3.fillStyle = maxed ? "#3a2a10" : PALETTE.foam;
-        ctx3.font = FONT(16, "800");
-        ctx3.textAlign = "center";
-        ctx3.textBaseline = "middle";
-        ctx3.fillText(UPGRADE_ICON[u.id] || "\u2605", px + 33, mid + 1);
+        drawUpgradeIcon(ctx3, u.id, px + 33, mid, 10, maxed ? "#3a2a10" : "#f3fbfc");
         ctx3.textAlign = "left";
         ctx3.font = FONT(14, "800");
         ctx3.fillStyle = PALETTE.foam;
@@ -5536,28 +5680,51 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         }
       }
     }
+    pickEnding() {
+      const e = STR.endings;
+      if (this.eggsTarget >= 300) return e.bountiful;
+      if (this.runHits === 0) return e.perfect;
+      if (this.player.wounds.length >= 4) return e.battered;
+      return e.plain;
+    }
     renderWin(ctx3, view2) {
       const { w, h } = view2;
       ctx3.fillStyle = rgba("#06243a", 0.5);
       ctx3.fillRect(0, 0, w, h);
-      wobblyText(ctx3, STR.win, w / 2, h * 0.22, Math.min(56, w * 0.1), PALETTE.amberSoft, 4);
+      const end = this.ending || STR.endings.plain;
+      wobblyText(ctx3, end.title, w / 2, h * 0.18, Math.min(48, w * 0.092), PALETTE.amberSoft, 4);
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
-      ctx3.font = FONT(16, "600");
+      ctx3.font = FONT(15, "600");
       ctx3.fillStyle = PALETTE.foam;
-      ctx3.fillText(STR.winSub, w / 2, h * 0.33);
-      ctx3.font = FONT(24, "800");
+      wrapText(ctx3, end.line, w / 2, h * 0.28, Math.min(640, w * 0.84), 20);
+      ctx3.font = FONT(23, "800");
       ctx3.fillStyle = PALETTE.amber;
-      ctx3.fillText(STR.eggsLaid(this.eggsTarget), w / 2, h * 0.44);
-      ctx3.font = FONT(13, "600");
+      ctx3.fillText(STR.eggsLaid(this.eggsTarget), w / 2, h * 0.41);
+      ctx3.font = FONT(12, "600");
       ctx3.fillStyle = rgba(PALETTE.amberSoft, 0.95);
-      ctx3.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), w / 2, h * 0.52);
-      ctx3.font = FONT(13, "500");
-      ctx3.fillStyle = rgba(PALETTE.foam, 0.8);
-      ctx3.fillText(STR.winFunFact, w / 2, h * 0.58);
-      this.button(ctx3, "retry", w / 2 - 190, h * 0.7, 116, 44, "\u21BA " + STR.retry, true, true);
-      this.button(ctx3, "wardrobe", w / 2 - 58, h * 0.7, 116, 44, "\u{1F41F} " + STR.toWardrobe);
-      this.button(ctx3, "shop", w / 2 + 74, h * 0.7, 116, 44, "\u2693 " + STR.toShop);
+      ctx3.fillText(STR.lifetimeEggs(this.save.laidTotal || 0), w / 2, h * 0.47);
+      for (let i = 0; i < 6; i++) {
+        const rise = (this.t * 16 + i * 70) % (h * 0.4);
+        const bx = w / 2 + Math.sin(i * 1.7 + this.t * 0.6) * w * 0.2;
+        const by = h * 0.7 - rise * 0.28;
+        ctx3.save();
+        ctx3.translate(bx, by);
+        ctx3.scale(0.5, 0.5);
+        ctx3.globalAlpha = 0.75;
+        drawSunfish(ctx3, 14, this.t, { flap: this.menuFlap * 2 + i, blink: 1, lookX: 1, skin: this.skinObj() });
+        ctx3.restore();
+      }
+      ctx3.globalAlpha = 1;
+      ctx3.font = FONT(11, "800");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.54);
+      ctx3.font = FONT(12, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.82);
+      wrapText(ctx3, this.funFact, w / 2, h * 0.585, Math.min(640, w * 0.84), 16);
+      this.button(ctx3, "retry", w / 2 - 190, h * 0.82, 116, 44, STR.retry, true, true);
+      this.button(ctx3, "wardrobe", w / 2 - 58, h * 0.82, 116, 44, STR.toWardrobe);
+      this.button(ctx3, "shop", w / 2 + 74, h * 0.82, 116, 44, STR.toShop);
     }
     renderDead(ctx3, view2) {
       const { w, h } = view2;
@@ -5569,23 +5736,26 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.font = FONT(17, "600");
       ctx3.fillStyle = PALETTE.foam;
       ctx3.fillText(this.deathMsg, w / 2, h * 0.35);
-      ctx3.font = FONT(13, "500");
-      ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
-      ctx3.fillText("\u{1F41F} " + this.funFact, w / 2, h * 0.43);
-      ctx3.font = FONT(14, "700");
+      ctx3.font = FONT(11, "800");
+      ctx3.fillStyle = PALETTE.amberSoft;
+      ctx3.fillText(STR.didYouKnow.toUpperCase(), w / 2, h * 0.42);
+      ctx3.font = FONT(12.5, "500");
+      ctx3.fillStyle = rgba(PALETTE.foam, 0.78);
+      wrapText(ctx3, this.funFact, w / 2, h * 0.46, Math.min(640, w * 0.84), 16);
+      ctx3.font = FONT(13, "700");
       ctx3.fillStyle = PALETTE.amberSoft;
       const pct = Math.round(this.player.x / WORLD.goalDistance * 100);
-      ctx3.fillText(`+${Math.floor(this.runEggs)} \u{1F95A} banked   \xB7   reached ${pct}% \xB7 ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.5);
+      ctx3.fillText(`+${Math.floor(this.runEggs)} eggs banked   \xB7   reached ${pct}% \xB7 ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.56);
       const free = this.stats().wind > 0 && !this.usedWind;
       const canRevive = free || this.save.eggs >= this.reviveCost;
       let bx = w / 2 - (canRevive ? 250 : 125);
       if (canRevive) {
-        this.button(ctx3, "revive", bx, h * 0.62, 130, 44, free ? STR.continueFree : STR.continueBtn(this.reviveCost), true, true);
+        this.button(ctx3, "revive", bx, h * 0.66, 130, 44, free ? STR.continueFree : STR.continueBtn(this.reviveCost), true, true);
         bx += 142;
       }
-      this.button(ctx3, "retry", bx, h * 0.62, 116, 44, "\u21BA " + STR.retry, true, !canRevive);
+      this.button(ctx3, "retry", bx, h * 0.66, 116, 44, STR.retry, true, !canRevive);
       bx += 128;
-      this.button(ctx3, "shop", bx, h * 0.62, 116, 44, "\u2693 " + STR.toShop);
+      this.button(ctx3, "shop", bx, h * 0.66, 116, 44, STR.toShop);
     }
     entityCount() {
       return this.enemies.length + this.squids.length + this.puffers.length + this.jellies.length + this.boats.length + this.copepods.length + this.seagulls.length;
