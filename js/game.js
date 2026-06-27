@@ -167,6 +167,7 @@ export class Game {
     this.clearEntities();
     this.spawnIdx = 0; this.runPlankton = 0; this.runPoints = 0; this.runHits = 0; this.runBanked = false; this.usedWind = false;
     this.runEggs = 0;   // now ONLY the lay mini-game tally; 0 until the spawning ground
+    this.cpPlanktonMark = 0;   // plankton total at the last checkpoint lay
     this.netDrainT = 0; this.spawnCD = 0;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
@@ -201,6 +202,7 @@ export class Game {
 
     if (this.state === 'intro') { this.updateIntro(dt); return; }
     if (this.state === 'dying') { this.updateDying(dt); return; }
+    if (this.state === 'cplay') { this.updateCheckpointLay(dt); return; }
     if (this.state === 'menu' || this.state === 'shop' || this.state === 'wardrobe' || this.state === 'loot') { this.updateUI(dt); return; }
     if (this.state === 'dead' || this.state === 'win') { this.updateEnd(); return; }
 
@@ -235,6 +237,14 @@ export class Game {
     const env = { player: pl };
     for (const e of this.enemies) e.update(dt, env);
     for (const s of this.squids) s.update(dt, env);
+    // a faint little streamline behind any creature swimming/dashing hard
+    for (const e of this.enemies) {
+      const sp = Math.hypot(e.vx || 0, e.vy || 0);
+      if (sp > 300 && Math.random() < 0.5) {
+        const inv = 1 / sp, r = e.r || 30;
+        this.particles.spawn(e.x - e.vx * inv * r * 0.7, e.y - e.vy * inv * r * 0.7, 'wake', -e.vx * inv * 24, -e.vy * inv * 24, { size: r * 0.16, life: 0.38 });
+      }
+    }
     for (const s of this.puffers) s.update(dt, env);
     for (const c of this.copepods) c.update(dt, env);
     for (const b of this.boats) b.update(dt);
@@ -275,13 +285,18 @@ export class Game {
       if (forward) {
         this.checkpointX = Math.max(this.checkpointX, zoneStartX(zi));
         this.checkpointRegionIdx = zi;
-        if (zi > (this.maxZoneReached || 0)) {                 // award points once per new zone
+        const newZone = zi > (this.maxZoneReached || 0);
+        if (newZone) {                                         // award points once per new zone
           this.maxZoneReached = zi;
           this.runPoints += ECONOMY.pointsPerCheckpoint;
           this.particles.spawn(pl.x, pl.y - pl.r, 'sparkle', 0, -40, { color: P.amberSoft });
         }
-        this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 };
         if (zi >= 4) Audio.sfx('warn');
+        // every new region checkpoint (except the final Spawning Ground, which
+        // runs the full mini-game) plays a short lay-egg cutscene that banks a
+        // clutch from the plankton gathered since the last checkpoint + health.
+        if (newZone && zi < WORLD.zones.length - 1) this.beginCheckpointLay(zi);
+        else this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 };
       } else this.banner = { text: WORLD.zones[zi].name, life: 2.2 };
     }
 
@@ -586,6 +601,39 @@ export class Game {
     }
   }
 
+  // a short cutscene at each region checkpoint: lay a small clutch (banked at
+  // once) from the plankton gathered since the last checkpoint + current health.
+  beginCheckpointLay(zi) {
+    this.state = 'cplay'; this.cpT = 0; this.cpZone = zi;
+    const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
+    this.cpPlanktonMark = this.runPlankton;
+    const s = this.stats();
+    this.cpEggs = Math.max(0, Math.round((since * ECONOMY.planktonMul + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
+    this.cpLaid = 0;
+    this.save.eggs += this.cpEggs;
+    this.save.laidTotal = (this.save.laidTotal || 0) + this.cpEggs;
+    this.persist();
+    this.player.vx *= 0.3; this.player.vy *= 0.3;
+    Audio.sfx('eggs');
+  }
+  updateCheckpointLay(dt) {
+    this.cpT += dt;
+    const pl = this.player;
+    pl.vx *= 0.9; pl.vy *= 0.9; pl.mouth = 0.4;
+    pl.y += Math.sin(this.cpT * 3) * 6 * dt;                 // gentle bob
+    const dur = 2.4, prog = clamp(this.cpT / dur, 0, 1);
+    this.cpLaid = Math.round(this.cpEggs * prog);
+    if (Math.random() < 0.7) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, 'egg', -50 - Math.random() * 60, (Math.random() - 0.5) * 60, { life: 3.2, size: 4 + Math.random() * 4 });
+    if (Math.random() < 0.3) this.particles.spawn(pl.x, pl.y, 'sparkle', (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 100, { color: P.amberSoft });
+    if (this.nurse) { this.nurse.update(dt, pl, this.particles); if (this.nurse.dead) this.nurse = null; }
+    const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
+    this.camX = lerp(this.camX, camTarget, clamp(dt * 3, 0, 1));
+    Input.takeTap(); Input.anyJustPressed();                // flush input during the beat
+    if (this.cpT > dur + 0.5) {
+      this.state = 'play';
+      this.banner = { text: STR.checkpoint(WORLD.zones[this.cpZone].name), life: 2.4 };
+    }
+  }
   beginLaying() {
     if (this.state !== 'play') return;
     this.state = 'laying';
@@ -803,7 +851,7 @@ export class Game {
     const vis = this.zoneVisuals();
     this.bg.render(ctx, { ...view, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
 
-    const worldState = this.state === 'play' || this.state === 'laying' || this.state === 'dead' || this.state === 'win' || this.state === 'dying';
+    const worldState = this.state === 'play' || this.state === 'laying' || this.state === 'cplay' || this.state === 'dead' || this.state === 'win' || this.state === 'dying';
     if (worldState) this.renderWorld(ctx, view);
     else if (this.state !== 'intro') this.renderMenuWorld(ctx, view);
 
@@ -1030,6 +1078,13 @@ export class Game {
       ctx.fillStyle = rgba('#000', 0.4); roundRect(ctx, bx, by, bw, 12, 6); ctx.fill();
       ctx.fillStyle = P.blood; roundRect(ctx, bx, by, bw * clamp(haul, 0, 1), 12, 6); ctx.fill();
       ctx.fillStyle = P.amber; roundRect(ctx, bx, by + 16, bw * clamp(esc, 0, 1), 8, 4); ctx.fill();
+    }
+    if (this.state === 'cplay') {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = FONT(34, '800'); ctx.fillStyle = P.amber;
+      ctx.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view.h * 0.18);
+      ctx.font = FONT(13, '600'); ctx.fillStyle = rgba(P.foam, 0.85);
+      ctx.fillText(STR.cpLay, w / 2, view.h * 0.18 + 24);
     }
     if (this.state === 'laying') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

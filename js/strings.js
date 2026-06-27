@@ -18,6 +18,7 @@ export const STR = {
   hudPlankton: 'plankton',
   layPrompt: 'WIGGLE! drag back & forth — tap fast!',
   layEffort: 'EFFORT',
+  cpLay: 'laying a clutch…',
 
   // shop
   shopTitle: 'Tide-Pool Outfitters',

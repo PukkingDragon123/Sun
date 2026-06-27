@@ -157,11 +157,14 @@ export class Background {
     sand.addColorStop(0, mixHex(art.floor[0], deep, dark * 0.8));
     sand.addColorStop(1, mixHex(art.floor[1], deep, dark * 0.85));
     ctx.fillStyle = sand;
+    // the seabed is shaped purely by world position (x + camX), so it scrolls
+    // 1:1 with the world and the camera — no time term, so the sand no longer
+    // crawls weirdly on its own; the dunes sit still relative to everything else.
+    const rip = art.tex.ripple;
+    const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02) * 5 * rip * scale + Math.sin((x + camX) * 0.06) * 3 * rip * scale;
     ctx.beginPath();
     ctx.moveTo(0, h);
-    ctx.lineTo(0, sandTop + Math.sin((camX) * 0.02 + t) * 4);
-    const rip = art.tex.ripple;
-    const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * rip * scale + Math.sin((x + camX) * 0.06) * 3 * rip * scale;
+    ctx.lineTo(0, floorYAt(0));
     for (let x = 0; x <= w; x += 18) ctx.lineTo(x, floorYAt(x));
     ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
 
@@ -273,7 +276,7 @@ export class Background {
   drawSeabedDecor(ctx, view, t, light, art, floorYAt) {
     if (art.decor === 'debris') return;              // lane: no plants
     const { w, scale, camX } = view;
-    const par = -camX * 0.85;                        // near-foreground parallax
+    const par = -camX;                               // 1:1 with the floor — plants stay rooted to the sand
     const span = w + 360;
     const count = art.decor === 'sparse' ? 4
                 : art.decor === 'anemone' ? 6

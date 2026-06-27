@@ -194,14 +194,14 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     { id: "shield", name: "Bubble Shield", blurb: "a few moments untouchable", color: "#bfe9f0" }
   ];
   var NURSE = {
-    followLerp: 3.2,
+    followLerp: 3.4,
     // how snappily it chases its anchor point
-    offBehind: 1.7,
+    offBehind: 1.6,
     // anchor = behind the player by this * player.r
-    offSide: 0.9,
+    offSide: 0.85,
     // and beside by this * player.r (above/below)
-    r: 40,
-    // body radius
+    r: 26,
+    // body radius (a small, friendly companion)
     healSparkleEvery: 0.12,
     leaveSpeed: 220,
     // swim-away velocity once it's done
@@ -1919,26 +1919,38 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     return pts;
   }
   function drawWound(ctx3, R, w) {
-    const cx = Math.cos(w.a) * 0.7 * R, cy = Math.sin(w.a) * 0.55 * R;
-    const rad = ((w.cut ? 0.18 : 0.26) + w.r) * R;
-    const blob = blobPts(cx, cy, rad, rad * 0.82, 9, 0.42, w.a * 97 | 0);
+    const heal = clamp(1 - (w.age || 0) / (w.cut ? 22 : 15), 0, 1);
+    const cx = Math.cos(w.a) * 0.72 * R, cy = Math.sin(w.a) * 0.6 * R;
+    const rad = ((w.cut ? 0.16 : 0.24) + w.r) * R * (0.42 + 0.58 * heal);
+    const blob = blobPts(cx, cy, rad, rad * 0.82, 10, 0.42, w.a * 97 | 0);
     ctx3.save();
     ctx3.globalCompositeOperation = "destination-out";
-    sketchShape(ctx3, blob, { fill: "#000", outline: null, wobble: 1.2, key: w.a * 53 | 0 });
+    sketchShape(ctx3, blob, { fill: "#000", outline: null, wobble: 1.3, key: w.a * 53 | 0 });
     ctx3.restore();
-    sketchShape(ctx3, blob, { fill: null, outline: rgba("#3a0d08", 0.95), lineW: R * 0.06, wobble: 1.4, key: w.a * 53 | 0 });
     sketchShape(
       ctx3,
-      blobPts(cx, cy, rad * 0.82, rad * 0.66, 8, 0.4, w.a * 31 | 0),
-      { fill: null, outline: rgba(PALETTE.blood, 0.6), lineW: R * 0.035, wobble: 1.6, key: w.a * 17 | 0 }
+      blobPts(cx, cy, rad * 0.8, rad * 0.66, 9, 0.4, w.a * 53 | 0),
+      { fill: rgba("#5a120b", 0.92 * (0.55 + 0.45 * heal)), outline: null, wobble: 1.4, key: w.a * 41 | 0 }
     );
-    ctx3.strokeStyle = rgba(PALETTE.blood, 0.5);
-    ctx3.lineWidth = R * 0.045;
-    ctx3.lineCap = "round";
+    sketchShape(
+      ctx3,
+      blobPts(cx, cy, rad * 0.5, rad * 0.42, 8, 0.4, w.a * 31 | 0),
+      { fill: rgba("#8a261a", 0.9 * heal), outline: null, wobble: 1.5, key: w.a * 23 | 0 }
+    );
+    ctx3.fillStyle = rgba("#c8604f", 0.45 * heal);
     ctx3.beginPath();
-    ctx3.moveTo(cx, cy + rad * 0.5);
-    ctx3.quadraticCurveTo(cx + R * 0.03, cy + R * 0.3, cx - R * 0.02, cy + R * 0.52);
-    ctx3.stroke();
+    ctx3.ellipse(cx - rad * 0.2, cy - rad * 0.2, rad * 0.17, rad * 0.11, 0, 0, TAU);
+    ctx3.fill();
+    sketchShape(ctx3, blob, { fill: null, outline: rgba("#2a0805", 0.92), lineW: R * 0.05, wobble: 1.6, key: w.a * 53 | 0 });
+    if (heal > 0.2) {
+      ctx3.strokeStyle = rgba(PALETTE.blood, 0.5 * heal);
+      ctx3.lineWidth = R * 0.045;
+      ctx3.lineCap = "round";
+      ctx3.beginPath();
+      ctx3.moveTo(cx, cy + rad * 0.5);
+      ctx3.quadraticCurveTo(cx + R * 0.04, cy + R * 0.4, cx - R * 0.02, cy + rad * 0.5 + R * 0.2);
+      ctx3.stroke();
+    }
   }
   function drawParasites(ctx3, R, n) {
     for (let i = 0; i < Math.min(n, 6); i++) {
@@ -2974,17 +2986,23 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.quadraticCurveTo(1.28 * R, 0.46 * R + off * R, 1.18 * R, 0.56 * R + off * R + Math.sin(t * 3 + off) * 0.03 * R);
       ctx3.stroke();
     }
-    ctx3.fillStyle = "#3a1c16";
+    ctx3.strokeStyle = "#3a1c16";
+    ctx3.lineWidth = Math.max(2, 0.05 * R);
+    ctx3.lineCap = "round";
     ctx3.beginPath();
-    ctx3.ellipse(1.18 * R, 0.3 * R, 0.07 * R, 0.045 * R, 0, 0, TAU);
+    ctx3.arc(1.12 * R, 0.22 * R, 0.13 * R, Math.PI * 0.12, Math.PI * 0.74);
+    ctx3.stroke();
+    ctx3.fillStyle = rgba(PALETTE.foam, 0.96);
+    ctx3.beginPath();
+    ctx3.arc(0.9 * R, -0.1 * R, 0.13 * R, 0, TAU);
     ctx3.fill();
     ctx3.fillStyle = PALETTE.ink;
     ctx3.beginPath();
-    ctx3.arc(0.86 * R, -0.12 * R, 0.06 * R, 0, TAU);
+    ctx3.arc(0.93 * R, -0.08 * R, 0.075 * R, 0, TAU);
     ctx3.fill();
-    ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
+    ctx3.fillStyle = rgba("#fff", 0.95);
     ctx3.beginPath();
-    ctx3.arc(0.84 * R, -0.15 * R, 0.022 * R, 0, TAU);
+    ctx3.arc(0.89 * R, -0.12 * R, 0.032 * R, 0, TAU);
     ctx3.fill();
     ctx3.strokeStyle = rgba(PALETTE.ink, 0.35);
     ctx3.lineWidth = 1.6;
@@ -2994,6 +3012,25 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.quadraticCurveTo((0.46 - i * 0.08) * R, 0.02 * R, (0.5 - i * 0.08) * R, 0.16 * R);
       ctx3.stroke();
     }
+    ctx3.save();
+    ctx3.translate(0.74 * R, -0.52 * R);
+    ctx3.rotate(-0.12);
+    ctx3.fillStyle = "#fcfdff";
+    ctx3.beginPath();
+    ctx3.moveTo(-0.32 * R, 0.08 * R);
+    ctx3.quadraticCurveTo(-0.36 * R, -0.18 * R, 0, -0.22 * R);
+    ctx3.quadraticCurveTo(0.36 * R, -0.18 * R, 0.32 * R, 0.08 * R);
+    ctx3.quadraticCurveTo(0, -0.04 * R, -0.32 * R, 0.08 * R);
+    ctx3.closePath();
+    ctx3.fill();
+    ctx3.strokeStyle = rgba(PALETTE.ink, 0.3);
+    ctx3.lineWidth = 1.4;
+    ctx3.stroke();
+    ctx3.fillStyle = "#e23b2e";
+    const cw = 0.05 * R, cl = 0.15 * R, ccy = -0.08 * R;
+    ctx3.fillRect(-cw / 2, ccy - cl / 2, cw, cl);
+    ctx3.fillRect(-cl / 2, ccy - cw / 2, cl, cw);
+    ctx3.restore();
   }
   function drawWhirlpool(ctx3, R, t, st = {}) {
     const spin = st.spin ?? t * 0.6;
@@ -3391,11 +3428,11 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       sand.addColorStop(0, mixHex(art.floor[0], deep, dark * 0.8));
       sand.addColorStop(1, mixHex(art.floor[1], deep, dark * 0.85));
       ctx3.fillStyle = sand;
+      const rip = art.tex.ripple;
+      const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02) * 5 * rip * scale + Math.sin((x + camX) * 0.06) * 3 * rip * scale;
       ctx3.beginPath();
       ctx3.moveTo(0, h);
-      ctx3.lineTo(0, sandTop + Math.sin(camX * 0.02 + t) * 4);
-      const rip = art.tex.ripple;
-      const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * rip * scale + Math.sin((x + camX) * 0.06) * 3 * rip * scale;
+      ctx3.lineTo(0, floorYAt(0));
       for (let x = 0; x <= w; x += 18) ctx3.lineTo(x, floorYAt(x));
       ctx3.lineTo(w, h);
       ctx3.closePath();
@@ -3523,7 +3560,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     drawSeabedDecor(ctx3, view2, t, light, art, floorYAt) {
       if (art.decor === "debris") return;
       const { w, scale, camX } = view2;
-      const par = -camX * 0.85;
+      const par = -camX;
       const span = w + 360;
       const count = art.decor === "sparse" ? 4 : art.decor === "anemone" ? 6 : art.decor === "tubeworm" ? 6 : art.decor === "glowstalk" ? 7 : 9;
       for (let i = 0; i < count; i++) {
@@ -3713,7 +3750,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     }
     addWound(cut = false) {
       const a = (Math.random() < 0.6 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.9;
-      this.wounds.push({ a, r: (cut ? 0.16 : 0.2) + Math.random() * 0.12, cut });
+      this.wounds.push({ a, r: (cut ? 0.16 : 0.2) + Math.random() * 0.12, cut, age: 0 });
       if (this.wounds.length > 8) this.wounds.shift();
     }
     update(dt, target, particles) {
@@ -3788,8 +3825,19 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.mouth = Math.max(0, this.mouth - dt * 3);
       this._animate(dt, Math.min(1, sp / Math.max(1, this.speed)));
       if (Math.random() < 0.04) particles.spawn(this.x + this.r * 0.4, this.y - this.r * 0.2, "bubble", 6, -20);
-      if (this.wounds.length && Math.random() < 0.03 * this.wounds.length + (this.hurt > 0.4 ? 0.16 : 0))
-        particles.spawn(this.x + (Math.random() - 0.5) * this.r, this.y + (Math.random() - 0.3) * this.r, "blood", (Math.random() - 0.5) * 30, 30 + Math.random() * 40, { life: 1.2, size: 2 + Math.random() * 3 });
+      if (this.wounds.length) {
+        for (const w of this.wounds) w.age = (w.age || 0) + dt;
+        this.wounds = this.wounds.filter((w) => (w.age || 0) < (w.cut ? 22 : 15));
+      }
+      if (this.wounds.length && Math.random() < 0.05 * this.wounds.length + (this.hurt > 0.4 ? 0.2 : 0)) {
+        const w = this.wounds[Math.random() * this.wounds.length | 0];
+        const fresh = clamp(1 - (w.age || 0) / (w.cut ? 22 : 15), 0, 1);
+        if (Math.random() < 0.3 + fresh * 0.7) {
+          const wx = this.x + Math.cos(w.a) * 0.72 * this.r * this.face;
+          const wy = this.y + Math.sin(w.a) * 0.6 * this.r;
+          particles.spawn(wx, wy, "blood", (Math.random() - 0.5) * 26, 24 + Math.random() * 46, { life: 1.3, size: 2 + Math.random() * 3.5 });
+        }
+      }
       this._trailT -= dt;
       const moveSp = Math.hypot(this.vx, this.vy);
       if (moveSp > 40 && this._trailT <= 0) {
@@ -3827,8 +3875,8 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       while (turn < -Math.PI) turn += TAU;
       this._pdir = heading;
       const along = (ax * this.vx + ay * this.vy) / (Math.max(sp2, 1) * Math.max(dt, 1e-4));
-      const sqTarget = clamp(1 + along * 18e-5, 0.82, 1.18);
-      const ksq = 140, dsq = 14;
+      const sqTarget = clamp(1 + along * 26e-5, 0.74, 1.28);
+      const ksq = 105, dsq = 10.5;
       this.sqV += ((sqTarget - this.sq) * ksq - this.sqV * dsq) * dt;
       this.sq += this.sqV * dt;
       const bendTarget = clamp(turn / Math.max(dt, 1e-4) * -0.06, -0.5, 0.5);
@@ -3850,14 +3898,19 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.blink = Math.min(1, this.blink + dt * 7);
     }
     render(ctx3, t) {
-      if (this.trail.length) {
+      if (this.trail.length > 1) {
         ctx3.save();
-        for (const g of this.trail) {
-          const a = clamp(g.a, 0, 1);
-          ctx3.fillStyle = rgba("#dff3f7", a * 0.1);
+        ctx3.lineCap = "round";
+        ctx3.lineJoin = "round";
+        for (let i = 1; i < this.trail.length; i++) {
+          const g0 = this.trail[i - 1], g1 = this.trail[i];
+          const a = clamp(g1.a, 0, 1);
+          ctx3.strokeStyle = rgba("#dff3f7", a * 0.07);
+          ctx3.lineWidth = g1.r * 0.42;
           ctx3.beginPath();
-          ctx3.arc(g.x, g.y, g.r * (1 + (1 - a) * 0.6), 0, TAU);
-          ctx3.fill();
+          ctx3.moveTo(g0.x, g0.y);
+          ctx3.lineTo(g1.x, g1.y);
+          ctx3.stroke();
         }
         ctx3.restore();
       }
@@ -3909,6 +3962,12 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ctx3.arc(r * 1, -r * 0.95, 5 + 3 * Math.sin(t * 22), 0, TAU);
     ctx3.fill();
     ctx3.fillRect(r * 0.92, -r * 1.45, 3, 8);
+  }
+  function squish(ctx3, vx, vy, t, seed = 0, amt = 1) {
+    const sp = Math.hypot(vx || 0, vy || 0);
+    const bp = 1 + Math.sin(t * 2.6 + seed) * 0.045 * amt;
+    const st = clamp(sp / 680, 0, 0.16) * amt;
+    ctx3.scale((1 + st) * bp, (1 - st * 0.7) * bp);
   }
   var Seal = class {
     constructor(x, y) {
@@ -4007,6 +4066,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
       if (this.state === "windup") telegraph(ctx3, t, this.r);
+      squish(ctx3, this.vx, this.vy, t, this.homeY);
       drawSeal(ctx3, this.r, t, { mouth: this.mouth });
       ctx3.restore();
     }
@@ -4114,6 +4174,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
       if (this.state === "windup") telegraph(ctx3, t, this.r);
+      squish(ctx3, this.vx, this.vy, t, this.homeY, this.big ? 0.7 : 1);
       if (this.big) drawOrca(ctx3, this.r, t, { mouth: this.mouth });
       else drawShark(ctx3, this.r, t, { mouth: this.mouth, color: this.color });
       ctx3.restore();
@@ -4203,6 +4264,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
       if (this.state === "windup") ctx3.globalAlpha = 0.5 + 0.5 * Math.sin(t * 30);
+      squish(ctx3, this.vx, this.vy, t, this.homeY);
       drawBarracuda(ctx3, this.r, t, { mouth: this.mouth });
       ctx3.globalAlpha = 1;
       ctx3.restore();
@@ -4289,6 +4351,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.save();
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
+      squish(ctx3, this.vx, this.vy, t, this.homeY, 0.8);
       drawAngler(ctx3, this.r, t, { mouth: this.mouth, lure: this.lure });
       ctx3.restore();
     }
@@ -4372,6 +4435,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.save();
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
+      squish(ctx3, this.vx, this.vy, t, this.homeY, 0.7);
       drawSwordfish(ctx3, this.r, t, { lunging: this.state === "lunge" });
       ctx3.restore();
     }
@@ -4455,6 +4519,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.save();
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
+      squish(ctx3, this.vx, this.vy, t, this.homeY || this.x);
       drawCookiecutter(ctx3, this.r, t, { biting: this.state === "dart" });
       ctx3.restore();
     }
@@ -4559,6 +4624,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.save();
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
+      squish(ctx3, this.vx, this.vy, t, this.t * 13, 0.9);
       drawNurseShark(ctx3, this.r, t, {});
       ctx3.restore();
     }
@@ -4613,6 +4679,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.save();
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
+      squish(ctx3, this.vx, this.vy, t, this.homeY, 0.7);
       drawLionfish(ctx3, this.r, t, { flare: this.flare });
       ctx3.restore();
     }
@@ -4892,6 +4959,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
       if (this.state === "windup") telegraph(ctx3, t, this.r);
+      squish(ctx3, this.vx, 0, t, this.homeY, 0.6);
       drawCrab(ctx3, this.r, t, { walk: this.walk, snap: this.snap, wind: this.wind, move: Math.min(1, Math.abs(this.vx) / 90) });
       ctx3.restore();
     }
@@ -5123,6 +5191,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx3.translate(this.x, this.y);
       ctx3.scale(this.face, 1);
       if (this.state === "windup") telegraph(ctx3, t, this.r);
+      squish(ctx3, this.vx, this.vy, t, this.homeY, 0.8);
       drawSquid(ctx3, this.r, t, { grab: this.grab });
       ctx3.restore();
     }
@@ -5560,7 +5629,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           ctx3.fill();
           ctx3.restore();
         } else if (pr.kind === "wake") {
-          ctx3.fillStyle = rgba("#dff3f7", a * 0.22);
+          ctx3.fillStyle = rgba("#dff3f7", a * 0.12);
           ctx3.beginPath();
           ctx3.arc(pr.x, pr.y, pr.size, 0, TAU);
           ctx3.fill();
@@ -5706,6 +5775,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     hudPlankton: "plankton",
     layPrompt: "WIGGLE! drag back & forth \u2014 tap fast!",
     layEffort: "EFFORT",
+    cpLay: "laying a clutch\u2026",
     // shop
     shopTitle: "Tide-Pool Outfitters",
     shopBlurb: "Spend hard-won eggs. Become a marginally less useless fish.",
@@ -6062,6 +6132,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.runBanked = false;
       this.usedWind = false;
       this.runEggs = 0;
+      this.cpPlanktonMark = 0;
       this.netDrainT = 0;
       this.spawnCD = 0;
       const sp = this.world.spawners;
@@ -6109,6 +6180,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         this.updateDying(dt);
         return;
       }
+      if (this.state === "cplay") {
+        this.updateCheckpointLay(dt);
+        return;
+      }
       if (this.state === "menu" || this.state === "shop" || this.state === "wardrobe" || this.state === "loot") {
         this.updateUI(dt);
         return;
@@ -6149,6 +6224,13 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       const env2 = { player: pl };
       for (const e of this.enemies) e.update(dt, env2);
       for (const s of this.squids) s.update(dt, env2);
+      for (const e of this.enemies) {
+        const sp = Math.hypot(e.vx || 0, e.vy || 0);
+        if (sp > 300 && Math.random() < 0.5) {
+          const inv = 1 / sp, r = e.r || 30;
+          this.particles.spawn(e.x - e.vx * inv * r * 0.7, e.y - e.vy * inv * r * 0.7, "wake", -e.vx * inv * 24, -e.vy * inv * 24, { size: r * 0.16, life: 0.38 });
+        }
+      }
       for (const s of this.puffers) s.update(dt, env2);
       for (const c of this.copepods) c.update(dt, env2);
       for (const b of this.boats) b.update(dt);
@@ -6189,13 +6271,15 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         if (forward) {
           this.checkpointX = Math.max(this.checkpointX, zoneStartX(zi));
           this.checkpointRegionIdx = zi;
-          if (zi > (this.maxZoneReached || 0)) {
+          const newZone = zi > (this.maxZoneReached || 0);
+          if (newZone) {
             this.maxZoneReached = zi;
             this.runPoints += ECONOMY.pointsPerCheckpoint;
             this.particles.spawn(pl.x, pl.y - pl.r, "sparkle", 0, -40, { color: PALETTE.amberSoft });
           }
-          this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 };
           if (zi >= 4) Audio.sfx("warn");
+          if (newZone && zi < WORLD.zones.length - 1) this.beginCheckpointLay(zi);
+          else this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 };
         } else this.banner = { text: WORLD.zones[zi].name, life: 2.2 };
       }
       if (Math.random() < 0.3) this.particles.spawn(this.camX + Math.random() * this.view.worldViewW, REF_H - WATER.seabedBand - Math.random() * 40, "bubble", 0, -20);
@@ -6565,6 +6649,48 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         if (!pl.alive) this.die("squid");
       }
     }
+    // a short cutscene at each region checkpoint: lay a small clutch (banked at
+    // once) from the plankton gathered since the last checkpoint + current health.
+    beginCheckpointLay(zi) {
+      this.state = "cplay";
+      this.cpT = 0;
+      this.cpZone = zi;
+      const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
+      this.cpPlanktonMark = this.runPlankton;
+      const s = this.stats();
+      this.cpEggs = Math.max(0, Math.round((since * ECONOMY.planktonMul + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
+      this.cpLaid = 0;
+      this.save.eggs += this.cpEggs;
+      this.save.laidTotal = (this.save.laidTotal || 0) + this.cpEggs;
+      this.persist();
+      this.player.vx *= 0.3;
+      this.player.vy *= 0.3;
+      Audio.sfx("eggs");
+    }
+    updateCheckpointLay(dt) {
+      this.cpT += dt;
+      const pl = this.player;
+      pl.vx *= 0.9;
+      pl.vy *= 0.9;
+      pl.mouth = 0.4;
+      pl.y += Math.sin(this.cpT * 3) * 6 * dt;
+      const dur = 2.4, prog = clamp(this.cpT / dur, 0, 1);
+      this.cpLaid = Math.round(this.cpEggs * prog);
+      if (Math.random() < 0.7) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, "egg", -50 - Math.random() * 60, (Math.random() - 0.5) * 60, { life: 3.2, size: 4 + Math.random() * 4 });
+      if (Math.random() < 0.3) this.particles.spawn(pl.x, pl.y, "sparkle", (Math.random() - 0.5) * 100, (Math.random() - 0.5) * 100, { color: PALETTE.amberSoft });
+      if (this.nurse) {
+        this.nurse.update(dt, pl, this.particles);
+        if (this.nurse.dead) this.nurse = null;
+      }
+      const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
+      this.camX = lerp(this.camX, camTarget, clamp(dt * 3, 0, 1));
+      Input.takeTap();
+      Input.anyJustPressed();
+      if (this.cpT > dur + 0.5) {
+        this.state = "play";
+        this.banner = { text: STR.checkpoint(WORLD.zones[this.cpZone].name), life: 2.4 };
+      }
+    }
     beginLaying() {
       if (this.state !== "play") return;
       this.state = "laying";
@@ -6929,7 +7055,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.view.camX = this.camX;
       const vis = this.zoneVisuals();
       this.bg.render(ctx3, { ...view2, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
-      const worldState = this.state === "play" || this.state === "laying" || this.state === "dead" || this.state === "win" || this.state === "dying";
+      const worldState = this.state === "play" || this.state === "laying" || this.state === "cplay" || this.state === "dead" || this.state === "win" || this.state === "dying";
       if (worldState) this.renderWorld(ctx3, view2);
       else if (this.state !== "intro") this.renderMenuWorld(ctx3, view2);
       this._buttons = [];
@@ -7254,6 +7380,16 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         ctx3.fillStyle = PALETTE.amber;
         roundRect(ctx3, bx, by + 16, bw * clamp(esc, 0, 1), 8, 4);
         ctx3.fill();
+      }
+      if (this.state === "cplay") {
+        ctx3.textAlign = "center";
+        ctx3.textBaseline = "middle";
+        ctx3.font = FONT(34, "800");
+        ctx3.fillStyle = PALETTE.amber;
+        ctx3.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view2.h * 0.18);
+        ctx3.font = FONT(13, "600");
+        ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
+        ctx3.fillText(STR.cpLay, w / 2, view2.h * 0.18 + 24);
       }
       if (this.state === "laying") {
         ctx3.textAlign = "center";

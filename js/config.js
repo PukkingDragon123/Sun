@@ -142,10 +142,10 @@ export const BOOSTERS = [
 // Picked up via the 'nurse' booster: a pet that follows you (no passive heal),
 // heals you to full at the spawning ground, then swims away. Leaves on death.
 export const NURSE = {
-  followLerp: 3.2,      // how snappily it chases its anchor point
-  offBehind: 1.7,       // anchor = behind the player by this * player.r
-  offSide: 0.9,         // and beside by this * player.r (above/below)
-  r: 40,                // body radius
+  followLerp: 3.4,      // how snappily it chases its anchor point
+  offBehind: 1.6,       // anchor = behind the player by this * player.r
+  offSide: 0.85,        // and beside by this * player.r (above/below)
+  r: 26,                // body radius (a small, friendly companion)
   healSparkleEvery: 0.12,
   leaveSpeed: 220,      // swim-away velocity once it's done
   leaveTime: 2.2,       // seconds of swimming away before it's culled

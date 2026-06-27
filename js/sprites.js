@@ -773,20 +773,31 @@ function fan(R, hScale, up) {
 // drawn already clipped to the body, so a circle near the edge reads as a
 // scooped-out "cookie" bite missing from the silhouette.
 function drawWound(ctx, R, w) {
-  const cx = Math.cos(w.a) * 0.7 * R, cy = Math.sin(w.a) * 0.55 * R;
-  const rad = ((w.cut ? 0.18 : 0.26) + w.r) * R;       // a sizeable chunk, not a scratch
-  const blob = blobPts(cx, cy, rad, rad * 0.82, 9, 0.42, (w.a * 97) | 0);
-  // bite a real chunk out of the body silhouette (reveals the water behind)
+  const heal = clamp(1 - (w.age || 0) / (w.cut ? 22 : 15), 0, 1);    // 1 fresh .. 0 closed
+  const cx = Math.cos(w.a) * 0.72 * R, cy = Math.sin(w.a) * 0.6 * R;
+  const rad = ((w.cut ? 0.16 : 0.24) + w.r) * R * (0.42 + 0.58 * heal); // shrinks as it scars over
+  const blob = blobPts(cx, cy, rad, rad * 0.82, 10, 0.42, (w.a * 97) | 0);
+  // 1) bite a real chunk clean out of the silhouette — notches the body edge so
+  //    you can see the missing piece (water shows through at the rim).
   ctx.save(); ctx.globalCompositeOperation = 'destination-out';
-  sketchShape(ctx, blob, { fill: '#000', outline: null, wobble: 1.2, key: (w.a * 53) | 0 });
+  sketchShape(ctx, blob, { fill: '#000', outline: null, wobble: 1.3, key: (w.a * 53) | 0 });
   ctx.restore();
-  // dark gore rim + raw red flesh just inside it
-  sketchShape(ctx, blob, { fill: null, outline: rgba('#3a0d08', 0.95), lineW: R * 0.06, wobble: 1.4, key: (w.a * 53) | 0 });
-  sketchShape(ctx, blobPts(cx, cy, rad * 0.82, rad * 0.66, 8, 0.4, (w.a * 31) | 0),
-    { fill: null, outline: rgba(P.blood, 0.6), lineW: R * 0.035, wobble: 1.6, key: (w.a * 17) | 0 });
-  // a trickle running down from the chunk
-  ctx.strokeStyle = rgba(P.blood, 0.5); ctx.lineWidth = R * 0.045; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(cx, cy + rad * 0.5); ctx.quadraticCurveTo(cx + R * 0.03, cy + R * 0.3, cx - R * 0.02, cy + R * 0.52); ctx.stroke();
+  // 2) raw flesh filled back JUST inside the bite, so the crater reads as torn
+  //    flesh — not a flat black void — leaving a thin "bitten" crescent at the rim.
+  sketchShape(ctx, blobPts(cx, cy, rad * 0.8, rad * 0.66, 9, 0.4, (w.a * 53) | 0),
+    { fill: rgba('#5a120b', 0.92 * (0.55 + 0.45 * heal)), outline: null, wobble: 1.4, key: (w.a * 41) | 0 });
+  sketchShape(ctx, blobPts(cx, cy, rad * 0.5, rad * 0.42, 8, 0.4, (w.a * 31) | 0),
+    { fill: rgba('#8a261a', 0.9 * heal), outline: null, wobble: 1.5, key: (w.a * 23) | 0 });
+  ctx.fillStyle = rgba('#c8604f', 0.45 * heal);   // wet glisten
+  ctx.beginPath(); ctx.ellipse(cx - rad * 0.2, cy - rad * 0.2, rad * 0.17, rad * 0.11, 0, 0, TAU); ctx.fill();
+  // 3) torn, glistening dark rim around the bite
+  sketchShape(ctx, blob, { fill: null, outline: rgba('#2a0805', 0.92), lineW: R * 0.05, wobble: 1.6, key: (w.a * 53) | 0 });
+  // 4) blood weeping down from the chunk while it's still fresh
+  if (heal > 0.2) {
+    ctx.strokeStyle = rgba(P.blood, 0.5 * heal); ctx.lineWidth = R * 0.045; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx, cy + rad * 0.5);
+    ctx.quadraticCurveTo(cx + R * 0.04, cy + R * 0.4, cx - R * 0.02, cy + rad * 0.5 + R * 0.2); ctx.stroke();
+  }
 }
 function drawParasites(ctx, R, n) {
   for (let i = 0; i < Math.min(n, 6); i++) {
@@ -1489,13 +1500,34 @@ export function drawNurseShark(ctx, R, t, st = {}) {
     ctx.stroke();
   }
 
-  ctx.fillStyle = '#3a1c16';
-  ctx.beginPath(); ctx.ellipse(1.18 * R, 0.30 * R, 0.07 * R, 0.045 * R, 0, 0, TAU); ctx.fill();
+  // a friendly little upturned smile
+  ctx.strokeStyle = '#3a1c16'; ctx.lineWidth = Math.max(2, 0.05 * R); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(1.12 * R, 0.22 * R, 0.13 * R, Math.PI * 0.12, Math.PI * 0.74); ctx.stroke();
 
-  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.86 * R, -0.12 * R, 0.06 * R, 0, TAU); ctx.fill();
-  ctx.fillStyle = rgba(P.foam, 0.85); ctx.beginPath(); ctx.arc(0.84 * R, -0.15 * R, 0.022 * R, 0, TAU); ctx.fill();
+  // big gentle eye high on the flat head (white sclera + soft pupil + glint)
+  ctx.fillStyle = rgba(P.foam, 0.96); ctx.beginPath(); ctx.arc(0.9 * R, -0.1 * R, 0.13 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(0.93 * R, -0.08 * R, 0.075 * R, 0, TAU); ctx.fill();
+  ctx.fillStyle = rgba('#fff', 0.95); ctx.beginPath(); ctx.arc(0.89 * R, -0.12 * R, 0.032 * R, 0, TAU); ctx.fill();
+  // gill slits
   ctx.strokeStyle = rgba(P.ink, 0.35); ctx.lineWidth = 1.6;
   for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo((0.5 - i * 0.08) * R, -0.12 * R); ctx.quadraticCurveTo((0.46 - i * 0.08) * R, 0.02 * R, (0.5 - i * 0.08) * R, 0.16 * R); ctx.stroke(); }
+
+  // a little nurse cap (white, red cross) perched on the head — friendly + on-theme
+  ctx.save();
+  ctx.translate(0.74 * R, -0.52 * R); ctx.rotate(-0.12);
+  ctx.fillStyle = '#fcfdff';
+  ctx.beginPath();
+  ctx.moveTo(-0.32 * R, 0.08 * R);
+  ctx.quadraticCurveTo(-0.36 * R, -0.18 * R, 0, -0.22 * R);
+  ctx.quadraticCurveTo(0.36 * R, -0.18 * R, 0.32 * R, 0.08 * R);
+  ctx.quadraticCurveTo(0, -0.04 * R, -0.32 * R, 0.08 * R);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = rgba(P.ink, 0.3); ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = '#e23b2e';                                    // red cross
+  const cw = 0.05 * R, cl = 0.15 * R, ccy = -0.08 * R;
+  ctx.fillRect(-cw / 2, ccy - cl / 2, cw, cl);
+  ctx.fillRect(-cl / 2, ccy - cw / 2, cl, cw);
+  ctx.restore();
 }
 
 // ----------------------------------------------------------- a slow whirlpool

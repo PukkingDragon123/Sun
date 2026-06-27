@@ -99,7 +99,7 @@ export class Player {
   }
   addWound(cut = false) {
     const a = (Math.random() < 0.6 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.9;
-    this.wounds.push({ a, r: (cut ? 0.16 : 0.2) + Math.random() * 0.12, cut });
+    this.wounds.push({ a, r: (cut ? 0.16 : 0.2) + Math.random() * 0.12, cut, age: 0 });
     if (this.wounds.length > 8) this.wounds.shift();
   }
 
@@ -148,9 +148,21 @@ export class Player {
     this.mouth = Math.max(0, this.mouth - dt * 3);
     this._animate(dt, Math.min(1, sp / Math.max(1, this.speed)));
     if (Math.random() < 0.04) particles.spawn(this.x + this.r * 0.4, this.y - this.r * 0.2, 'bubble', 6, -20);
-    // open wounds keep weeping blood
-    if (this.wounds.length && Math.random() < 0.03 * this.wounds.length + (this.hurt > 0.4 ? 0.16 : 0))
-      particles.spawn(this.x + (Math.random() - 0.5) * this.r, this.y + (Math.random() - 0.3) * this.r, 'blood', (Math.random() - 0.5) * 30, 30 + Math.random() * 40, { life: 1.2, size: 2 + Math.random() * 3 });
+    // open wounds slowly close over time (cuts scar over fastest)
+    if (this.wounds.length) {
+      for (const w of this.wounds) w.age = (w.age || 0) + dt;
+      this.wounds = this.wounds.filter((w) => (w.age || 0) < (w.cut ? 22 : 15));
+    }
+    // and they weep REAL blood from the actual wound location while fresh
+    if (this.wounds.length && Math.random() < 0.05 * this.wounds.length + (this.hurt > 0.4 ? 0.2 : 0)) {
+      const w = this.wounds[(Math.random() * this.wounds.length) | 0];
+      const fresh = clamp(1 - (w.age || 0) / (w.cut ? 22 : 15), 0, 1);
+      if (Math.random() < 0.3 + fresh * 0.7) {
+        const wx = this.x + Math.cos(w.a) * 0.72 * this.r * this.face;
+        const wy = this.y + Math.sin(w.a) * 0.6 * this.r;
+        particles.spawn(wx, wy, 'blood', (Math.random() - 0.5) * 26, 24 + Math.random() * 46, { life: 1.3, size: 2 + Math.random() * 3.5 });
+      }
+    }
 
     // --- swim wake: drop a fading ghost disc when moving, spaced in time ---
     this._trailT -= dt;
@@ -187,8 +199,8 @@ export class Player {
     while (turn > Math.PI) turn -= TAU; while (turn < -Math.PI) turn += TAU;
     this._pdir = heading;
     const along = (ax * this.vx + ay * this.vy) / (Math.max(sp2, 1) * Math.max(dt, 1e-4));
-    const sqTarget = clamp(1 + along * 0.00018, 0.82, 1.18);
-    const ksq = 140, dsq = 14;
+    const sqTarget = clamp(1 + along * 0.00026, 0.74, 1.28);   // wider squash = bouncier
+    const ksq = 105, dsq = 10.5;                               // softer spring overshoots more
     this.sqV += ((sqTarget - this.sq) * ksq - this.sqV * dsq) * dt;
     this.sq += this.sqV * dt;
     const bendTarget = clamp(turn / Math.max(dt, 1e-4) * -0.06, -0.5, 0.5);
@@ -209,13 +221,15 @@ export class Player {
   }
 
   render(ctx, t) {
-    // velocity wake (world space, behind the body)
-    if (this.trail.length) {
-      ctx.save();
-      for (const g of this.trail) {
-        const a = clamp(g.a, 0, 1);
-        ctx.fillStyle = rgba('#dff3f7', a * 0.10);
-        ctx.beginPath(); ctx.arc(g.x, g.y, g.r * (1.0 + (1 - a) * 0.6), 0, TAU); ctx.fill();
+    // velocity wake (world space, behind the body): a faint little streamline
+    if (this.trail.length > 1) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 1; i < this.trail.length; i++) {
+        const g0 = this.trail[i - 1], g1 = this.trail[i];
+        const a = clamp(g1.a, 0, 1);
+        ctx.strokeStyle = rgba('#dff3f7', a * 0.07);
+        ctx.lineWidth = g1.r * 0.42;
+        ctx.beginPath(); ctx.moveTo(g0.x, g0.y); ctx.lineTo(g1.x, g1.y); ctx.stroke();
       }
       ctx.restore();
     }
@@ -250,6 +264,17 @@ function telegraph(ctx, t, r) {
   ctx.fillStyle = rgba('#ffdf7a', a);
   ctx.beginPath(); ctx.arc(r * 1.0, -r * 0.95, 5 + 3 * Math.sin(t * 22), 0, TAU); ctx.fill();
   ctx.fillRect(r * 0.92, -r * 1.45, 3, 8);
+}
+
+// gentle procedural squish for creatures: a soft breathing pulse + a stretch
+// along the direction of travel (faster = more stretched, body squashed on the
+// cross axis). Call right before the sprite draw, after the face flip, so the
+// whole creature reads bouncy and alive. Cheap; no per-entity state needed.
+function squish(ctx, vx, vy, t, seed = 0, amt = 1) {
+  const sp = Math.hypot(vx || 0, vy || 0);
+  const bp = 1 + Math.sin(t * 2.6 + seed) * 0.045 * amt;       // breathing pulse
+  const st = clamp(sp / 680, 0, 0.16) * amt;                   // speed stretch
+  ctx.scale((1 + st) * bp, (1 - st * 0.7) * bp);
 }
 
 // -------------------------------------------------------- Sea lion (the seal)
@@ -302,6 +327,7 @@ export class Seal {
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
     if (this.state === 'windup') telegraph(ctx, t, this.r);
+    squish(ctx, this.vx, this.vy, t, this.homeY);
     drawSeal(ctx, this.r, t, { mouth: this.mouth });
     ctx.restore();
   }
@@ -366,6 +392,7 @@ export class Shark {
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
     if (this.state === 'windup') telegraph(ctx, t, this.r);
+    squish(ctx, this.vx, this.vy, t, this.homeY, this.big ? 0.7 : 1);
     if (this.big) drawOrca(ctx, this.r, t, { mouth: this.mouth });
     else drawShark(ctx, this.r, t, { mouth: this.mouth, color: this.color });
     ctx.restore();
@@ -415,6 +442,7 @@ export class Barracuda {
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
     if (this.state === 'windup') ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 30);
+    squish(ctx, this.vx, this.vy, t, this.homeY);
     drawBarracuda(ctx, this.r, t, { mouth: this.mouth }); ctx.globalAlpha = 1;
     ctx.restore();
   }
@@ -460,6 +488,7 @@ export class Angler {
   telegraphing() { return this.state === 'windup'; }
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    squish(ctx, this.vx, this.vy, t, this.homeY, 0.8);
     drawAngler(ctx, this.r, t, { mouth: this.mouth, lure: this.lure });
     ctx.restore();
   }
@@ -507,6 +536,7 @@ export class Swordfish {
   telegraphing() { return this.state === 'windup'; }
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    squish(ctx, this.vx, this.vy, t, this.homeY, 0.7);
     drawSwordfish(ctx, this.r, t, { lunging: this.state === 'lunge' });
     ctx.restore();
   }
@@ -554,6 +584,7 @@ export class Cookiecutter {
   telegraphing() { return this.state === 'windup'; }
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    squish(ctx, this.vx, this.vy, t, this.homeY || this.x);
     drawCookiecutter(ctx, this.r, t, { biting: this.state === 'dart' });
     ctx.restore();
   }
@@ -656,6 +687,7 @@ export class NurseShark {
   leave() { if (this.state !== 'leaving') { this.state = 'leaving'; this.leaveT = 0; } }
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    squish(ctx, this.vx, this.vy, t, this.t * 13, 0.9);
     drawNurseShark(ctx, this.r, t, {});
     ctx.restore();
   }
@@ -693,6 +725,7 @@ export class Lionfish {
   telegraphing() { return false; }
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    squish(ctx, this.vx, this.vy, t, this.homeY, 0.7);
     drawLionfish(ctx, this.r, t, { flare: this.flare });
     ctx.restore();
   }
@@ -871,6 +904,7 @@ export class Crab {
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
     if (this.state === 'windup') telegraph(ctx, t, this.r);
+    squish(ctx, this.vx, 0, t, this.homeY, 0.6);
     drawCrab(ctx, this.r, t, { walk: this.walk, snap: this.snap, wind: this.wind, move: Math.min(1, Math.abs(this.vx) / 90) });
     ctx.restore();
   }
@@ -1002,6 +1036,7 @@ export class Squid {
   render(ctx, t) {
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
     if (this.state === 'windup') telegraph(ctx, t, this.r);
+    squish(ctx, this.vx, this.vy, t, this.homeY, 0.8);
     drawSquid(ctx, this.r, t, { grab: this.grab });
     ctx.restore();
   }
@@ -1216,7 +1251,7 @@ export class Particles {
       else if (pr.kind === 'foam') { ctx.fillStyle = rgba('#eaf6f7', a * 0.8); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
       else if (pr.kind === 'ring') { ctx.strokeStyle = rgba(pr.color || P.danger, a * 0.8); ctx.lineWidth = 3 * a + 1; ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.stroke(); }
       else if (pr.kind === 'glow') { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = rgba(pr.color || P.bio, a * 0.7); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); ctx.restore(); }
-      else if (pr.kind === 'wake') { ctx.fillStyle = rgba('#dff3f7', a * 0.22); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
+      else if (pr.kind === 'wake') { ctx.fillStyle = rgba('#dff3f7', a * 0.12); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
     }
   }
 }
