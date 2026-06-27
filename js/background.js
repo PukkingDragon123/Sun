@@ -28,11 +28,12 @@ export class Background {
   constructor() { this.paper = null; this.t = 0; }
   ensurePaper() { if (!this.paper) this.paper = makePaper(220); }
 
-  render(ctx, view, t, tint, dark = 0, zoneId = '') {
+  render(ctx, view, t, tint, dark = 0, zoneId = '', level = 0) {
     this.ensurePaper();
     const { w, h, scale, camX } = view;
     const sy = (wy) => wy * scale;
     const light = 1 - dark;             // how lit the scene is
+    const lvl = Math.max(0, Math.min(1, level));   // live music level, for synced shimmer
     const art = ZONE_ART[zoneId] || DEFAULT_ART;
 
     // 1. base vertical wash: zone tint -> deep navy (darker zones sink to black)
@@ -70,8 +71,8 @@ export class Background {
     // 3b. ambient life drifting through the deep background
     this.drawAmbient(ctx, view, t, light);
 
-    // 4. godrays (fade out in the dark)
-    if (light > 0.15) godrays(ctx, w, h, t, 6, light);
+    // 4. godrays (fade out in the dark) — brighten gently on the music's beat
+    if (light > 0.15) godrays(ctx, w, h, t, 6, light * (1 + lvl * 0.5));
 
     // 4b. bioluminescent motes drift through the dark (twilight + trench)
     if (dark > 0.22) {
@@ -81,7 +82,7 @@ export class Background {
         let bx = (i * 151.3 + par) % (w + 80); if (bx < 0) bx += w + 80;
         const by = (h * (0.15 + hash1(i * 11) * 0.7)) + Math.sin(t * 0.6 + i) * 18 * scale;
         const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 1.4 + i * 1.7));
-        ctx.fillStyle = rgba(P.bio, 0.28 * dark * tw);
+        ctx.fillStyle = rgba(P.bio, 0.28 * dark * tw * (1 + lvl * 0.7));
         ctx.beginPath(); ctx.arc(bx, by, (1.4 + hash1(i) * 1.8) * scale, 0, TAU); ctx.fill();
       }
       ctx.restore();
@@ -129,8 +130,8 @@ export class Background {
     if (light > 0.3) {
       for (let i = 0; i < 20; i++) {
         const fx = (i * 137.5 - camX * 0.8) % w; const x = fx < 0 ? fx + w : fx;
-        ctx.fillStyle = rgba(P.foam, (0.4 + 0.35 * Math.sin(t * 2 + i)) * light);
-        ctx.beginPath(); ctx.arc(x, waveAt(x, 5, 4) - 3 * scale, 1.6 * scale, 0, TAU); ctx.fill();
+        ctx.fillStyle = rgba(P.foam, (0.4 + 0.35 * Math.sin(t * 2 + i) + lvl * 0.4) * light);
+        ctx.beginPath(); ctx.arc(x, waveAt(x, 5, 4) - 3 * scale, (1.6 + lvl * 1.4) * scale, 0, TAU); ctx.fill();
       }
     }
 

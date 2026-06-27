@@ -859,8 +859,10 @@ export class Game {
   // ---------------------------------------------------------------- RENDER
   render(ctx, view) {
     this.view = view; this.view.camX = this.camX;
+    // live music level/beat (synced visuals pulse with whatever song is playing)
+    this.musicLevel = Audio.level(); this.musicBeat = Audio.beat();
     const vis = this.zoneVisuals();
-    this.bg.render(ctx, { ...view, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
+    this.bg.render(ctx, { ...view, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId, this.musicLevel);
 
     const worldState = this.state === 'play' || this.state === 'laying' || this.state === 'cplay' || this.state === 'dead' || this.state === 'win' || this.state === 'dying';
     if (worldState) this.renderWorld(ctx, view);
@@ -1076,7 +1078,10 @@ export class Game {
     if (this.banner) {
       const a = clamp(this.banner.life, 0, 1) * clamp(2.6 - this.banner.life, 0, 1);
       ctx.globalAlpha = clamp(a + 0.2, 0, 1);
-      wobblyText(ctx, this.banner.text, w / 2, view.h * 0.26, 28, P.foam, 5);
+      const bsc = 1 + (this.musicBeat || 0) * 0.06;
+      ctx.save(); ctx.translate(w / 2, view.h * 0.26); ctx.scale(bsc, bsc);
+      wobblyText(ctx, this.banner.text, 0, 0, 28, P.foam, 5);
+      ctx.restore();
       ctx.globalAlpha = 1;
     }
     if (pl.caught || pl.grabbed) {
@@ -1201,28 +1206,38 @@ export class Game {
   }
   button(ctx, id, x, y, w, h, label, enabled = true, accent = false) {
     this._buttons.push({ id, x, y, w, h });
-    const r = Math.min(13, h / 2);
+    // hover lifts + brightens (mouse only); the accent CTA breathes with the music
+    const hov = enabled && Input.hasMouse && Input.sx >= x && Input.sx <= x + w && Input.sy >= y && Input.sy <= y + h;
+    const beat = accent && enabled ? (this.musicBeat || 0) : 0;
+    const lift = (hov ? 2.5 : 0) + beat * 1.6;
+    const r = Math.min(14, h / 2), by = y - lift;
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
-    const top = enabled ? (accent ? '#ffd574' : '#4393a8') : 'rgba(110,120,128,0.32)';
+    if (hov) { ctx.shadowColor = accent ? 'rgba(255,205,100,0.75)' : 'rgba(125,210,235,0.6)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 2; }
+    else { ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3; }
+    const br = hov ? 0.14 : 0;
+    const top = enabled ? (accent ? mixHex('#ffd574', '#ffffff', br) : mixHex('#4393a8', '#ffffff', br)) : 'rgba(110,120,128,0.32)';
     const bot = enabled ? (accent ? '#e7a32c' : '#22596a') : 'rgba(86,96,104,0.28)';
-    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, top); g.addColorStop(1, bot);
-    ctx.fillStyle = g; roundRect(ctx, x, y, w, h, r); ctx.fill();
+    const g = ctx.createLinearGradient(0, by, 0, by + h); g.addColorStop(0, top); g.addColorStop(1, bot);
+    ctx.fillStyle = g; roundRect(ctx, x, by, w, h, r); ctx.fill();
     ctx.restore();
-    ctx.strokeStyle = rgba(P.ink, 0.85); ctx.lineWidth = 2; roundRect(ctx, x, y, w, h, r); ctx.stroke();
-    if (enabled) { ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1.5; roundRect(ctx, x + 2.5, y + 2.5, w - 5, h * 0.5, r - 2); ctx.stroke(); }
+    ctx.strokeStyle = rgba(P.ink, 0.85); ctx.lineWidth = 2; roundRect(ctx, x, by, w, h, r); ctx.stroke();
+    if (enabled) { ctx.strokeStyle = `rgba(255,255,255,${hov ? 0.5 : 0.28})`; ctx.lineWidth = 1.5; roundRect(ctx, x + 2.5, by + 2.5, w - 5, h * 0.5, r - 2); ctx.stroke(); }
     ctx.fillStyle = enabled ? (accent ? '#3a2a10' : '#f3fbfc') : 'rgba(255,255,255,0.5)';
     ctx.font = FONT(15, '800'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(label, x + w / 2, y + h / 2 + 1);
+    ctx.fillText(label, x + w / 2, by + h / 2 + 1);
   }
 
   renderMenu(ctx, view) {
     const { w, h } = view;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    wobblyText(ctx, STR.title, w / 2, h * 0.17, Math.min(58, w * 0.105), P.foam, 2);
+    // the title breathes with the music (beat + level)
+    const tp = 1 + (this.musicLevel || 0) * 0.05 + (this.musicBeat || 0) * 0.05;
+    ctx.save(); ctx.translate(w / 2, h * 0.17); ctx.scale(tp, tp);
+    wobblyText(ctx, STR.title, 0, 0, Math.min(58, w * 0.105), P.foam, 2);
+    ctx.restore();
     ctx.font = FONT(15, '600'); ctx.fillStyle = P.amberSoft;
     ctx.fillText(STR.subtitle, w / 2, h * 0.17 + Math.min(44, w * 0.08));
-    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 2.5);
+    ctx.globalAlpha = clamp(0.55 + 0.35 * Math.sin(this.t * 2.5) + (this.musicBeat || 0) * 0.4, 0, 1);
     ctx.font = FONT(17, '700'); ctx.fillStyle = P.foam;
     ctx.fillText(STR.tapToStart, w / 2, h * 0.72); ctx.globalAlpha = 1;
     // a rotating real sunfish fact — genuinely educational

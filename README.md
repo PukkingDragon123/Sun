@@ -106,8 +106,14 @@ currents keep the water fluid; kelp sways in time with the wave surge; a school
 of **tuna** and the occasional **whale** drift through the deep background;
 predators are drawn with realistic countershading and fins; and the sunfish
 accrues bleeding bite-wounds and gets visibly sadder the more it's hurt. Audio
-is synthesized live via the Web Audio API. See `design/` for the design plan,
-the art/audio manifest, and the frozen numeric thresholds.
+is synthesized live via the Web Audio API — SFX, a melancholic music-box pad, and
+ocean ambience. Drop a real **background song** in `assets/` (e.g.
+`assets/song.mp3`) and it becomes the music bed: the standalone build inlines it
+automatically, and the synth pad steps aside. The whole scene also **pulses with
+the music** — godrays, surface foam, bio-motes, the title and region banners all
+breathe with the live audio level (it reads whatever is playing through an
+analyser, so it syncs to your song too). See `design/` for the design plan, the
+art/audio manifest, and the frozen numeric thresholds.
 
 ```
 index.html        page shell, boots js/main.js

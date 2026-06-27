@@ -533,6 +533,18 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   var melodyStep = 0;
   var seaNodes = null;
   var padNodes = null;
+  var analyser = null;
+  var levelData = null;
+  var _level = 0;
+  var _beat = 0;
+  var _beatAvg = 0;
+  var songBuf = null;
+  var songSrc = null;
+  var songGain = null;
+  var songLoading = false;
+  var songTried = false;
+  var musicOn = false;
+  var usingSong = false;
   function ensure() {
     if (ctx) return true;
     try {
@@ -541,9 +553,14 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       ctx = new AC();
       master = ctx.createGain();
       master.gain.value = muted ? 0 : 0.85;
-      master.connect(ctx.destination);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.6;
+      levelData = new Uint8Array(analyser.fftSize);
+      master.connect(analyser);
+      analyser.connect(ctx.destination);
       musicBus = ctx.createGain();
-      musicBus.gain.value = 0.28;
+      musicBus.gain.value = 0.32;
       musicBus.connect(master);
       sfxBus = ctx.createGain();
       sfxBus.gain.value = 0.9;
@@ -583,6 +600,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     o.start(t0);
     o.stop(t0 + a + d + 0.05);
   }
+  function ping(freq, t0, peak, d, type = "sine", bus = sfxBus) {
+    tone(freq, t0, 8e-3, peak, d, type, bus);
+    tone(freq * 2.01, t0, 8e-3, peak * 0.28, d * 0.7, "sine", bus);
+  }
   function noise(t0, dur, peak, filterType, freq, q, bus = sfxBus, sweepTo = null) {
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
@@ -603,45 +624,50 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   var SFX = {
     pickup() {
       const t = ctx.currentTime;
-      tone(660, t, 0.01, 0.5, 0.12, "sine");
-      tone(990, t + 0.06, 0.01, 0.4, 0.16, "sine");
+      ping(720, t, 0.42, 0.12, "sine");
+      ping(1080, t + 0.05, 0.34, 0.14, "sine");
     },
     dash() {
-      noise(ctx.currentTime, 0.34, 0.5, "bandpass", 280, 0.8, sfxBus, 1700);
+      const t = ctx.currentTime;
+      noise(t, 0.32, 0.45, "bandpass", 260, 0.8, sfxBus, 1900);
+      tone(180, t, 6e-3, 0.3, 0.2, "sine", sfxBus, 520);
     },
     hurt() {
       const t = ctx.currentTime;
-      tone(150, t, 5e-3, 0.7, 0.22, "square", sfxBus, 70);
-      noise(t, 0.22, 0.5, "lowpass", 500, 1, sfxBus);
+      tone(150, t, 4e-3, 0.7, 0.24, "square", sfxBus, 66);
+      noise(t, 0.24, 0.5, "lowpass", 520, 1, sfxBus, 180);
     },
     snare() {
       const t = ctx.currentTime;
-      tone(220, t, 0.01, 0.45, 0.3, "sawtooth", sfxBus, 160);
+      tone(220, t, 0.01, 0.42, 0.3, "sawtooth", sfxBus, 150);
+      noise(t, 0.18, 0.2, "bandpass", 900, 1.4);
     },
     escape() {
       const t = ctx.currentTime;
-      tone(400, t, 5e-3, 0.5, 0.14, "triangle", sfxBus, 900);
+      tone(420, t, 4e-3, 0.5, 0.16, "triangle", sfxBus, 980);
+      ping(820, t + 0.05, 0.25, 0.12);
     },
     ui() {
-      tone(520, ctx.currentTime, 5e-3, 0.3, 0.07, "triangle");
+      const t = ctx.currentTime;
+      ping(560, t, 0.26, 0.08, "triangle");
     },
     buy() {
       const t = ctx.currentTime;
-      tone(587, t, 0.01, 0.4, 0.1);
-      tone(880, t + 0.08, 0.01, 0.4, 0.14);
+      [523, 659, 784].forEach((f, i) => ping(f, t + i * 0.05, 0.34, 0.12, "sine"));
     },
     eggs() {
       const t = ctx.currentTime;
-      const sc = [523, 659, 784, 988, 1175];
-      sc.forEach((f, i) => tone(f, t + i * 0.12, 0.02, 0.45, 0.6, "sine", musicBus));
+      [523, 659, 784, 988, 1175].forEach((f, i) => tone(f, t + i * 0.11, 0.02, 0.42, 0.6, "sine", musicBus));
     },
     warn() {
-      tone(330, ctx.currentTime, 0.01, 0.3, 0.18, "sawtooth");
+      const t = ctx.currentTime;
+      tone(330, t, 0.01, 0.3, 0.2, "sawtooth");
+      tone(247, t + 0.12, 0.01, 0.26, 0.22, "sawtooth");
     },
     mine() {
       const t = ctx.currentTime;
       noise(t, 0.5, 0.8, "lowpass", 900, 1, sfxBus, 90);
-      tone(90, t, 5e-3, 0.7, 0.45, "sawtooth", sfxBus, 38);
+      tone(90, t, 5e-3, 0.7, 0.45, "sawtooth", sfxBus, 36);
     },
     chest() {
       const t = ctx.currentTime;
@@ -650,18 +676,17 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     },
     reveal() {
       const t = ctx.currentTime;
-      const sc = [523, 659, 784, 988, 1318];
-      sc.forEach((f, i) => tone(f, t + i * 0.07, 0.01, 0.4, 0.4, "triangle", musicBus));
+      [523, 659, 784, 988, 1318].forEach((f, i) => ping(f, t + i * 0.06, 0.36, 0.4, "triangle", musicBus));
     },
     equip() {
       const t = ctx.currentTime;
-      tone(659, t, 5e-3, 0.35, 0.09, "sine");
-      tone(988, t + 0.06, 5e-3, 0.3, 0.12, "sine");
+      ping(659, t, 0.32, 0.09, "sine");
+      ping(988, t + 0.05, 0.28, 0.12, "sine");
     }
   };
   var SCALE = [392, 440, 523, 587, 659, 784];
   function tickMelody(dt) {
-    if (!padNodes) return;
+    if (!padNodes || usingSong) return;
     melodyTimer -= dt;
     if (melodyTimer <= 0) {
       melodyTimer = 2.6 + Math.random() * 3.2;
@@ -672,9 +697,110 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       }
     }
   }
+  function startPad() {
+    if (padNodes || usingSong) return;
+    const t = ctx.currentTime;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 900;
+    lp.connect(musicBus);
+    const freqs = [130.8, 196, 261.6];
+    const oscs = [];
+    for (const fr of freqs) {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = fr;
+      const g = ctx.createGain();
+      g.gain.value = 0.12;
+      o.connect(g);
+      g.connect(lp);
+      o.start(t);
+      oscs.push(o);
+    }
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    const lg = ctx.createGain();
+    lg.gain.value = 300;
+    lfo.connect(lg);
+    lg.connect(lp.frequency);
+    lfo.start(t);
+    padNodes = { oscs, lfo, lp };
+  }
+  function stopPad() {
+    if (!padNodes) return;
+    try {
+      padNodes.oscs.forEach((o) => o.stop());
+      padNodes.lfo.stop();
+    } catch (e) {
+    }
+    padNodes = null;
+  }
+  function songSources() {
+    const list = [];
+    if (typeof window !== "undefined") {
+      if (window.__SUNFISH_MUSIC) list.push(window.__SUNFISH_MUSIC);
+      if (window.__SUNFISH_MUSIC_URL) list.push(window.__SUNFISH_MUSIC_URL);
+    }
+    return list;
+  }
+  function loadSong() {
+    if (songLoading || songBuf || songTried) return;
+    songLoading = true;
+    const tryNext = (i) => {
+      const srcs = songSources();
+      if (i >= srcs.length) {
+        songLoading = false;
+        songTried = true;
+        return;
+      }
+      fetch(srcs[i]).then((r) => {
+        if (!r.ok) throw 0;
+        return r.arrayBuffer();
+      }).then((ab) => ctx.decodeAudioData(ab)).then((buf) => {
+        songBuf = buf;
+        songLoading = false;
+        songTried = true;
+        if (musicOn) startSong();
+      }).catch(() => tryNext(i + 1));
+    };
+    tryNext(0);
+  }
+  function startSong() {
+    if (!songBuf || usingSong) return;
+    try {
+      stopPad();
+      songSrc = ctx.createBufferSource();
+      songSrc.buffer = songBuf;
+      songSrc.loop = true;
+      songGain = ctx.createGain();
+      songGain.gain.value = 1e-4;
+      songSrc.connect(songGain);
+      songGain.connect(musicBus);
+      const t = ctx.currentTime;
+      songSrc.start(t);
+      songGain.gain.exponentialRampToValueAtTime(0.95, t + 1.4);
+      usingSong = true;
+    } catch (e) {
+    }
+  }
+  function stopSong() {
+    if (!usingSong) return;
+    try {
+      const t = ctx.currentTime;
+      songGain.gain.cancelScheduledValues(t);
+      songGain.gain.setValueAtTime(Math.max(2e-4, songGain.gain.value), t);
+      songGain.gain.exponentialRampToValueAtTime(1e-4, t + 0.6);
+      songSrc.stop(t + 0.7);
+    } catch (e) {
+    }
+    usingSong = false;
+    songSrc = null;
+    songGain = null;
+  }
   var Audio = {
     unlock() {
       if (ensure() && ctx.state === "suspended") ctx.resume();
+      if (ctx) loadSong();
     },
     isMuted() {
       return muted;
@@ -694,42 +820,43 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       } catch (e) {
       }
     },
+    // does a real song file back the music? (else the synth pad is playing)
+    hasSong() {
+      return usingSong;
+    },
+    // smoothed live output level (0..1) of whatever is playing — for visual sync.
+    // Call once per frame; cheap. Returns 0 when muted/silent.
+    level() {
+      if (!analyser) return 0;
+      try {
+        analyser.getByteTimeDomainData(levelData);
+        let peak = 0;
+        for (let i = 0; i < levelData.length; i++) {
+          const v = Math.abs(levelData[i] - 128) / 128;
+          if (v > peak) peak = v;
+        }
+        _level += (peak - _level) * 0.28;
+        const rise = peak - _beatAvg;
+        _beatAvg += (peak - _beatAvg) * 0.12;
+        _beat = Math.max(_beat * 0.86, rise > 0.1 ? Math.min(1, rise * 4) : 0);
+      } catch (e) {
+      }
+      return _level;
+    },
+    // a 0..1 value that spikes on musical transients (kick/onset), decays smoothly
+    beat() {
+      return _beat;
+    },
     music(on) {
       if (!ensure()) return;
-      if (on && !padNodes) {
-        const t = ctx.currentTime;
-        const lp = ctx.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = 900;
-        lp.connect(musicBus);
-        const freqs = [130.8, 196, 261.6];
-        const oscs = [];
-        for (const fr of freqs) {
-          const o = ctx.createOscillator();
-          o.type = "triangle";
-          o.frequency.value = fr;
-          const g = ctx.createGain();
-          g.gain.value = 0.12;
-          o.connect(g);
-          g.connect(lp);
-          o.start(t);
-          oscs.push(o);
-        }
-        const lfo = ctx.createOscillator();
-        lfo.frequency.value = 0.07;
-        const lg = ctx.createGain();
-        lg.gain.value = 300;
-        lfo.connect(lg);
-        lg.connect(lp.frequency);
-        lfo.start(t);
-        padNodes = { oscs, lfo, lp };
-      } else if (!on && padNodes) {
-        try {
-          padNodes.oscs.forEach((o) => o.stop());
-          padNodes.lfo.stop();
-        } catch (e) {
-        }
-        padNodes = null;
+      musicOn = on;
+      if (on) {
+        loadSong();
+        if (songBuf) startSong();
+        else startPad();
+      } else {
+        stopSong();
+        stopPad();
       }
     },
     sea(on) {
@@ -3297,11 +3424,12 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     ensurePaper() {
       if (!this.paper) this.paper = makePaper(220);
     }
-    render(ctx3, view2, t, tint, dark = 0, zoneId = "") {
+    render(ctx3, view2, t, tint, dark = 0, zoneId = "", level = 0) {
       this.ensurePaper();
       const { w, h, scale, camX } = view2;
       const sy = (wy) => wy * scale;
       const light = 1 - dark;
+      const lvl = Math.max(0, Math.min(1, level));
       const art = ZONE_ART[zoneId] || DEFAULT_ART;
       const deep = mixHex(PALETTE.deepNavy, "#02060d", dark);
       const g = ctx3.createLinearGradient(0, 0, 0, h);
@@ -3339,7 +3467,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         ctx3.fill();
       }
       this.drawAmbient(ctx3, view2, t, light);
-      if (light > 0.15) godrays(ctx3, w, h, t, 6, light);
+      if (light > 0.15) godrays(ctx3, w, h, t, 6, light * (1 + lvl * 0.5));
       if (dark > 0.22) {
         ctx3.save();
         ctx3.globalCompositeOperation = "lighter";
@@ -3349,7 +3477,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           if (bx < 0) bx += w + 80;
           const by = h * (0.15 + hash1(i * 11) * 0.7) + Math.sin(t * 0.6 + i) * 18 * scale;
           const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 1.4 + i * 1.7));
-          ctx3.fillStyle = rgba(PALETTE.bio, 0.28 * dark * tw);
+          ctx3.fillStyle = rgba(PALETTE.bio, 0.28 * dark * tw * (1 + lvl * 0.7));
           ctx3.beginPath();
           ctx3.arc(bx, by, (1.4 + hash1(i) * 1.8) * scale, 0, TAU);
           ctx3.fill();
@@ -3408,9 +3536,9 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
         for (let i = 0; i < 20; i++) {
           const fx = (i * 137.5 - camX * 0.8) % w;
           const x = fx < 0 ? fx + w : fx;
-          ctx3.fillStyle = rgba(PALETTE.foam, (0.4 + 0.35 * Math.sin(t * 2 + i)) * light);
+          ctx3.fillStyle = rgba(PALETTE.foam, (0.4 + 0.35 * Math.sin(t * 2 + i) + lvl * 0.4) * light);
           ctx3.beginPath();
-          ctx3.arc(x, waveAt(x, 5, 4) - 3 * scale, 1.6 * scale, 0, TAU);
+          ctx3.arc(x, waveAt(x, 5, 4) - 3 * scale, (1.6 + lvl * 1.4) * scale, 0, TAU);
           ctx3.fill();
         }
       }
@@ -7079,8 +7207,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     render(ctx3, view2) {
       this.view = view2;
       this.view.camX = this.camX;
+      this.musicLevel = Audio.level();
+      this.musicBeat = Audio.beat();
       const vis = this.zoneVisuals();
-      this.bg.render(ctx3, { ...view2, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId);
+      this.bg.render(ctx3, { ...view2, camX: this.camX }, this.t, vis.tint, vis.dark, vis.zoneId, this.musicLevel);
       const worldState = this.state === "play" || this.state === "laying" || this.state === "cplay" || this.state === "dead" || this.state === "win" || this.state === "dying";
       if (worldState) this.renderWorld(ctx3, view2);
       else if (this.state !== "intro") this.renderMenuWorld(ctx3, view2);
@@ -7384,7 +7514,12 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       if (this.banner) {
         const a = clamp(this.banner.life, 0, 1) * clamp(2.6 - this.banner.life, 0, 1);
         ctx3.globalAlpha = clamp(a + 0.2, 0, 1);
-        wobblyText(ctx3, this.banner.text, w / 2, view2.h * 0.26, 28, PALETTE.foam, 5);
+        const bsc = 1 + (this.musicBeat || 0) * 0.06;
+        ctx3.save();
+        ctx3.translate(w / 2, view2.h * 0.26);
+        ctx3.scale(bsc, bsc);
+        wobblyText(ctx3, this.banner.text, 0, 0, 28, PALETTE.foam, 5);
+        ctx3.restore();
         ctx3.globalAlpha = 1;
       }
       if (pl.caught || pl.grabbed) {
@@ -7568,45 +7703,60 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     }
     button(ctx3, id, x, y, w, h, label, enabled = true, accent = false) {
       this._buttons.push({ id, x, y, w, h });
-      const r = Math.min(13, h / 2);
+      const hov = enabled && Input.hasMouse && Input.sx >= x && Input.sx <= x + w && Input.sy >= y && Input.sy <= y + h;
+      const beat = accent && enabled ? this.musicBeat || 0 : 0;
+      const lift = (hov ? 2.5 : 0) + beat * 1.6;
+      const r = Math.min(14, h / 2), by = y - lift;
       ctx3.save();
-      ctx3.shadowColor = "rgba(0,0,0,0.35)";
-      ctx3.shadowBlur = 8;
-      ctx3.shadowOffsetY = 3;
-      const top = enabled ? accent ? "#ffd574" : "#4393a8" : "rgba(110,120,128,0.32)";
+      if (hov) {
+        ctx3.shadowColor = accent ? "rgba(255,205,100,0.75)" : "rgba(125,210,235,0.6)";
+        ctx3.shadowBlur = 18;
+        ctx3.shadowOffsetY = 2;
+      } else {
+        ctx3.shadowColor = "rgba(0,0,0,0.35)";
+        ctx3.shadowBlur = 8;
+        ctx3.shadowOffsetY = 3;
+      }
+      const br = hov ? 0.14 : 0;
+      const top = enabled ? accent ? mixHex("#ffd574", "#ffffff", br) : mixHex("#4393a8", "#ffffff", br) : "rgba(110,120,128,0.32)";
       const bot = enabled ? accent ? "#e7a32c" : "#22596a" : "rgba(86,96,104,0.28)";
-      const g = ctx3.createLinearGradient(0, y, 0, y + h);
+      const g = ctx3.createLinearGradient(0, by, 0, by + h);
       g.addColorStop(0, top);
       g.addColorStop(1, bot);
       ctx3.fillStyle = g;
-      roundRect(ctx3, x, y, w, h, r);
+      roundRect(ctx3, x, by, w, h, r);
       ctx3.fill();
       ctx3.restore();
       ctx3.strokeStyle = rgba(PALETTE.ink, 0.85);
       ctx3.lineWidth = 2;
-      roundRect(ctx3, x, y, w, h, r);
+      roundRect(ctx3, x, by, w, h, r);
       ctx3.stroke();
       if (enabled) {
-        ctx3.strokeStyle = "rgba(255,255,255,0.28)";
+        ctx3.strokeStyle = `rgba(255,255,255,${hov ? 0.5 : 0.28})`;
         ctx3.lineWidth = 1.5;
-        roundRect(ctx3, x + 2.5, y + 2.5, w - 5, h * 0.5, r - 2);
+        roundRect(ctx3, x + 2.5, by + 2.5, w - 5, h * 0.5, r - 2);
         ctx3.stroke();
       }
       ctx3.fillStyle = enabled ? accent ? "#3a2a10" : "#f3fbfc" : "rgba(255,255,255,0.5)";
       ctx3.font = FONT(15, "800");
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
-      ctx3.fillText(label, x + w / 2, y + h / 2 + 1);
+      ctx3.fillText(label, x + w / 2, by + h / 2 + 1);
     }
     renderMenu(ctx3, view2) {
       const { w, h } = view2;
       ctx3.textAlign = "center";
       ctx3.textBaseline = "middle";
-      wobblyText(ctx3, STR.title, w / 2, h * 0.17, Math.min(58, w * 0.105), PALETTE.foam, 2);
+      const tp = 1 + (this.musicLevel || 0) * 0.05 + (this.musicBeat || 0) * 0.05;
+      ctx3.save();
+      ctx3.translate(w / 2, h * 0.17);
+      ctx3.scale(tp, tp);
+      wobblyText(ctx3, STR.title, 0, 0, Math.min(58, w * 0.105), PALETTE.foam, 2);
+      ctx3.restore();
       ctx3.font = FONT(15, "600");
       ctx3.fillStyle = PALETTE.amberSoft;
       ctx3.fillText(STR.subtitle, w / 2, h * 0.17 + Math.min(44, w * 0.08));
-      ctx3.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 2.5);
+      ctx3.globalAlpha = clamp(0.55 + 0.35 * Math.sin(this.t * 2.5) + (this.musicBeat || 0) * 0.4, 0, 1);
       ctx3.font = FONT(17, "700");
       ctx3.fillStyle = PALETTE.foam;
       ctx3.fillText(STR.tapToStart, w / 2, h * 0.72);
