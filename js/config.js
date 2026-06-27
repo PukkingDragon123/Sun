@@ -72,6 +72,15 @@ export const URCHIN = { damage: 1, radius: 26 };
 export const HOOK = { damage: 1, radius: 16, snare: true };
 export const ANCHOR = { radius: 64 };
 
+// ---- field obstacles (no direct damage; they move you) ---------------------
+// WHIRLPOOL: a slow vortex. `pull` = peak inward accel (world px/s^2) at the eye,
+// falling to 0 at the rim. `swirl` = tangential drag accel; `spin` = arm rotation.
+export const WHIRLPOOL = { radius: 190, pull: 520, swirl: 150, spin: 0.6 };
+// SEA VENT: a hot updraft. `lift` = upward accel (world px/s^2) inside the column,
+// `lateral` = gentle centring accel; `column` = column height (world px) above the
+// floor mouth; `radius` = mouth half-width / pull radius.
+export const VENT = { radius: 70, lift: 1500, lateral: 240, column: 430 };
+
 // ---- ambient waves: a slow surge that nudges you, strongest near the top ----
 export const WAVE = { surge: 54, freq: 0.42, swirl: 0.0009, depthKeep: 0.32 };
 
@@ -93,12 +102,67 @@ export const COPEPOD = { detectRange: 300, speed: 116 };
 export const SEAGULL = { diveSpeed: 560, damage: 1, interval: 5 };
 export const PLASTIC = { damage: 1, driftSpeed: 15 };
 
+// ---- v10 predators ---------------------------------------------------------
+// Lionfish: a slow venomous CONTACT drifter (kelp + bloom). Brush its spines for
+// 1 dmg + poison. Not a biter (canBite=>false); resolved in a collide() block.
+export const LIONFISH = { driftSpeed: 26, damage: 1, detectRange: 260 };
+// Moray: ambush burrow-eel (deep + trench). Anchored at the seabed; lunges out
+// in an extending S-curve when you drift close at its depth, then retracts.
+export const MORAY = {
+  detectRange: 230, windup: 0.5, lungeSpeed: 560, lungeDur: 0.42,
+  rest: 1.4, damage: 2, reach: 320,
+};
+// Electric ray (torpedo): flat disc that charges then DISCHARGES a radial shock
+// (deep + twilight). 1 dmg + stun on contact during discharge. Not a mouth bite.
+export const TORPEDO = {
+  detectRange: 230, chargeTime: 0.8, dischargeTime: 0.32, shockRadius: 190,
+  rest: 1.8, damage: 1, stun: 0.7,
+};
+// Crab: seabed scuttler (shallows + kelp + lane). Walks the floor; raises the
+// crusher claw (windup) then SNAPS a committed, dodgeable pinch.
+export const CRAB = {
+  speed: 84, detectRange: 300, windup: 0.5, snapSpeed: 360, snapDur: 0.34,
+  rest: 1.2, damage: 1, reach: 150,
+};
+// Giant grouper: big slow ambush gulper (deep + lane). Opens a huge mouth (the
+// telegraph) and SUCKS the player toward it, then lunges for a heavy 2-dmg bite.
+export const GROUPER = {
+  detectRange: 300, windup: 0.85, suction: 520, lungeSpeed: 360, lungeDur: 0.34,
+  rest: 1.7, damage: 2, reach: 120,
+};
+
 // ---- pickup boosters -------------------------------------------------------
 export const BOOSTERS = [
-  { id: 'nurse',  name: 'Nurse Shark',   blurb: 'a gentle companion mends you', color: '#c2a875' },
+  { id: 'nurse',  name: 'Nurse Shark',   blurb: 'a gentle companion tags along', color: '#c2a875' },
   { id: 'swift',  name: 'Swift Current', blurb: 'a burst of speed',             color: '#7fd0ff' },
   { id: 'shield', name: 'Bubble Shield', blurb: 'a few moments untouchable',    color: '#bfe9f0' },
 ];
+
+// ---- nurse-shark pet -------------------------------------------------------
+// Picked up via the 'nurse' booster: a pet that follows you (no passive heal),
+// heals you to full at the spawning ground, then swims away. Leaves on death.
+export const NURSE = {
+  followLerp: 3.2,      // how snappily it chases its anchor point
+  offBehind: 1.7,       // anchor = behind the player by this * player.r
+  offSide: 0.9,         // and beside by this * player.r (above/below)
+  r: 40,                // body radius
+  healSparkleEvery: 0.12,
+  leaveSpeed: 220,      // swim-away velocity once it's done
+  leaveTime: 2.2,       // seconds of swimming away before it's culled
+};
+
+// ---- economy: collect plankton, score points, lay eggs via a mini-game -----
+export const ECONOMY = {
+  pointsPerCheckpoint: 250,   // awarded each time you cross into a NEW forward zone
+  pointsPerPlankton: 10,      // per unit of plankton.value collected
+  layBase: 20,                // flat eggs floor at the lay mini-game
+  planktonMul: 4,             // eggs per plankton collected
+  healthMul: 8,               // eggs per current hp at lay time
+  layDuration: 6.0,           // mini-game length (s)
+  effortDrainPerSec: 0.55,    // effort meter bleeds down when you stop
+  effortPerInput: 0.020,      // effort gained per unit of input drive
+  consolationPlankton: 0.5,   // death banks floor(runPlankton * this) as eggs
+};
 
 // ---- the journey -----------------------------------------------------------
 // A long ocean crossing. At the slow base speed a careful run is a real trek

@@ -4,7 +4,8 @@
 import {
   REF_H, WATER, FISH, DASH, COMBAT, STATUS, SEAL, SHARK, BARRACUDA, ANGLER,
   PUFFER, SQUID, JELLY, BOAT, MINE, URCHIN, SWORDFISH, COOKIE, ORCA, COPEPOD,
-  SEAGULL, PLASTIC, PALETTE as P,
+  SEAGULL, PLASTIC, LIONFISH, MORAY, TORPEDO, CRAB, GROUPER, WHIRLPOOL, VENT,
+  NURSE, PALETTE as P,
 } from './config.js';
 import { clamp, lerp, TAU, dist, rgba, hash1 } from './utils.js';
 import {
@@ -12,7 +13,8 @@ import {
   drawSquid, drawSwordfish, drawCookiecutter, drawOrca, drawCopepod,
   drawSeagull, drawBag, drawBooster, drawBoat, drawNet, drawRock, drawCoral,
   drawAnchor, drawUrchin, drawHook, drawMine, drawKelp, drawJelly,
-  drawPlankton, drawEgg,
+  drawPlankton, drawEgg, drawLionfish, drawMoray, drawElectricRay, drawCrab,
+  drawGrouper, drawWhirlpool, drawSeaVent, drawNurseShark,
 } from './sprites.js';
 
 export const surfaceLimit = (r) => WATER.surfaceBand + r * 0.4;
@@ -38,6 +40,14 @@ export class Player {
     this.caught = null; this.haul = 0; this.escape = 0; this.netDrain = 0;
     this.grabbed = null; this.grabT = 0; this.grabEsc = 0;
     this.alive = true;
+    // velocity wake: a short ring buffer of {x,y,r,a} ghost discs
+    this.trail = []; this._trailT = 0; this.trailMax = 14;
+    this._pvx = 0; this._pvy = 0;            // previous-frame velocity (for accel)
+    // procedural animation springs (secondary motion)
+    this.sq = 1; this.sqV = 0;               // squash/stretch scale along travel
+    this.bend = 0; this.bendV = 0;           // body bend (radians) from turning
+    this.tailLag = 0; this.finLag = 0;       // lagged tail/clavus + fin sway
+    this._pdir = 0;                          // previous heading for turn-rate
   }
   applyStats(s) {
     this.stats = s;
@@ -83,8 +93,8 @@ export class Player {
   }
   stunFor(s) { this.stun = Math.max(this.stun, s); }
   applyBoost(type) {
-    if (type === 'nurse') { this.heal = STATUS.healTime; this.healT = 0.4; }
-    else if (type === 'swift') { this.swift = STATUS.swiftTime; }
+    // 'nurse' is handled in game.js (attaches a pet); no passive regen.
+    if (type === 'swift') { this.swift = STATUS.swiftTime; }
     else if (type === 'shield') { this.shield = STATUS.shieldTime; }
   }
   addWound(cut = false) {
@@ -94,6 +104,7 @@ export class Player {
   }
 
   update(dt, target, particles) {
+    const pvx = this._pvx, pvy = this._pvy;   // last frame's velocity (for accel)
     this.dashCD = Math.max(0, this.dashCD - dt);
     this.dashT = Math.max(0, this.dashT - dt);
     this.invuln = Math.max(0, this.invuln - dt);
@@ -140,6 +151,52 @@ export class Player {
     // open wounds keep weeping blood
     if (this.wounds.length && Math.random() < 0.03 * this.wounds.length + (this.hurt > 0.4 ? 0.16 : 0))
       particles.spawn(this.x + (Math.random() - 0.5) * this.r, this.y + (Math.random() - 0.3) * this.r, 'blood', (Math.random() - 0.5) * 30, 30 + Math.random() * 40, { life: 1.2, size: 2 + Math.random() * 3 });
+
+    // --- swim wake: drop a fading ghost disc when moving, spaced in time ---
+    this._trailT -= dt;
+    const moveSp = Math.hypot(this.vx, this.vy);
+    if (moveSp > 40 && this._trailT <= 0) {
+      this._trailT = 0.04;
+      const inv = 1 / (moveSp || 1);
+      const bx = this.x - this.vx * inv * this.r * 0.5;
+      const by = this.y - this.vy * inv * this.r * 0.5;
+      this.trail.push({ x: bx, y: by, r: this.r * (0.5 + 0.4 * clamp(moveSp / this.speed, 0, 1)), a: 1 });
+      if (this.trail.length > this.trailMax) this.trail.shift();
+    }
+    for (const g of this.trail) g.a -= dt * 2.2;
+    while (this.trail.length && this.trail[0].a <= 0) this.trail.shift();
+
+    // --- thrust bubbles when accelerating hard (a kick of effort) ---
+    const ax = (this.vx - pvx), ay = (this.vy - pvy);
+    const accel = Math.hypot(ax, ay) / Math.max(dt, 1e-4);
+    if (accel > 900 && particles) {
+      const sp3 = moveSp || 1;
+      const bx = this.x - (this.vx / sp3) * this.r * 0.8;
+      const by = this.y - (this.vy / sp3) * this.r * 0.8;
+      const n = accel > 2000 ? 3 : 1;
+      for (let i = 0; i < n; i++)
+        particles.spawn(bx + (Math.random() - 0.5) * this.r * 0.4, by + (Math.random() - 0.5) * this.r * 0.4,
+          'wake', -(this.vx / sp3) * 40 + (Math.random() - 0.5) * 40, -(this.vy / sp3) * 40 + (Math.random() - 0.5) * 40);
+    }
+    this._pvx = this.vx; this._pvy = this.vy;
+
+    // --- procedural animation: drive springs from accel + turn-rate ---
+    const sp2 = moveSp;
+    const heading = sp2 > 8 ? Math.atan2(this.vy, this.vx) : this._pdir;
+    let turn = heading - this._pdir;
+    while (turn > Math.PI) turn -= TAU; while (turn < -Math.PI) turn += TAU;
+    this._pdir = heading;
+    const along = (ax * this.vx + ay * this.vy) / (Math.max(sp2, 1) * Math.max(dt, 1e-4));
+    const sqTarget = clamp(1 + along * 0.00018, 0.82, 1.18);
+    const ksq = 140, dsq = 14;
+    this.sqV += ((sqTarget - this.sq) * ksq - this.sqV * dsq) * dt;
+    this.sq += this.sqV * dt;
+    const bendTarget = clamp(turn / Math.max(dt, 1e-4) * -0.06, -0.5, 0.5);
+    const kb = 90, db = 11;
+    this.bendV += ((bendTarget - this.bend) * kb - this.bendV * db) * dt;
+    this.bend += this.bendV * dt;
+    this.tailLag = lerp(this.tailLag, this.bend, clamp(dt * 8, 0, 1));
+    this.finLag = lerp(this.finLag, this.bend, clamp(dt * 5, 0, 1));
   }
 
   _animate(dt, effort) {
@@ -152,6 +209,16 @@ export class Player {
   }
 
   render(ctx, t) {
+    // velocity wake (world space, behind the body)
+    if (this.trail.length) {
+      ctx.save();
+      for (const g of this.trail) {
+        const a = clamp(g.a, 0, 1);
+        ctx.fillStyle = rgba('#dff3f7', a * 0.10);
+        ctx.beginPath(); ctx.arc(g.x, g.y, g.r * (1.0 + (1 - a) * 0.6), 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
     ctx.save(); ctx.translate(this.x, this.y);
     if (this.shield > 0) {
       ctx.strokeStyle = rgba('#bfe9f0', 0.35 + 0.2 * Math.sin(t * 8)); ctx.lineWidth = 3;
@@ -161,6 +228,8 @@ export class Player {
     if (this.captured) ctx.rotate(Math.sin(t * 18) * 0.12);
     else if (this.stun > 0) ctx.rotate(Math.sin(t * 26) * 0.08 * this.stun);
     ctx.scale(this.face, 1); ctx.rotate(this.pitch);
+    // squash/stretch: scale along travel (x), conserve area on y
+    const sq = this.sq; ctx.scale(sq, 1 / sq);
     const flashing = this.invuln > 0 && Math.floor(this.invuln * 14) % 2 === 0;
     if (flashing) ctx.globalAlpha = 0.45;
     const ratio = this.hp / Math.max(1, this.maxHp);
@@ -169,6 +238,7 @@ export class Player {
       flap: this.flap, blink: this.blink, hurt: this.hurt, lookX: 1, mouth: this.mouth,
       dash: this.dashT > 0, skin: this.skin, wounds: this.wounds, sad,
       poison: this.poison > 0, parasites: this.parasites,
+      bend: this.bend, tailLag: this.tailLag, finLag: this.finLag,
     });
     ctx.globalAlpha = 1; ctx.restore();
   }
@@ -538,6 +608,334 @@ export class Seagull {
   }
 }
 
+// ----------------------------------------------------- Nurse shark (pet)
+// A friendly companion picked up via the 'nurse' booster. Follows the player
+// (lerps to an anchor behind/beside), does NOT heal during the run. At the
+// spawning ground it heals the player to full, then swims away. Leaves on death.
+export class NurseShark {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = NURSE.r;
+    this.face = -1; this.t = 0;
+    this.state = 'follow';        // 'follow' | 'healing' | 'leaving'
+    this.side = 1;                // which side it tucks to
+    this.healT = 0; this.leaveT = 0; this.dead = false;
+  }
+  anchor(p) {
+    const behind = -p.face;       // opposite the way the fish points
+    return { x: p.x + behind * NURSE.offBehind * p.r, y: p.y + this.side * NURSE.offSide * p.r };
+  }
+  update(dt, p, particles) {
+    this.t += dt;
+    if (this.state === 'leaving') {
+      this.leaveT += dt;
+      this.vx = lerp(this.vx, this.face * NURSE.leaveSpeed, dt * 2);
+      this.vy = lerp(this.vy, -40, dt * 2);
+      this.x += this.vx * dt; this.y += this.vy * dt;
+      if (this.leaveT > NURSE.leaveTime) this.dead = true;
+      return;
+    }
+    const a = this.anchor(p);
+    const k = clamp(dt * NURSE.followLerp, 0, 1);
+    const nx = lerp(this.x, a.x, k), ny = lerp(this.y, a.y, k);
+    this.vx = (nx - this.x) / Math.max(dt, 1e-4);
+    this.vy = (ny - this.y) / Math.max(dt, 1e-4);
+    this.x = nx; this.y = ny;
+    if (Math.abs(this.vx) > 12) this.face = this.vx < 0 ? -1 : 1;
+    if (this.state === 'healing') {
+      this.healT -= dt;
+      if (particles && Math.random() < 0.7)
+        particles.spawn(p.x + (Math.random() - 0.5) * p.r, p.y - p.r * 0.3, 'sparkle', (Math.random() - 0.5) * 80, -60, { color: '#aef0c0' });
+      if (this.healT <= 0) { this.state = 'leaving'; this.leaveT = 0; }
+    }
+  }
+  beginLayHeal(p, particles) {
+    p.hp = p.maxHp;
+    this.state = 'healing'; this.healT = 0.9;
+    if (particles) particles.burst(p.x, p.y, 'sparkle', 18, 140, { color: '#aef0c0' });
+  }
+  leave() { if (this.state !== 'leaving') { this.state = 'leaving'; this.leaveT = 0; } }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    drawNurseShark(ctx, this.r, t, {});
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------- Lionfish
+// A slow, beautiful CONTACT hazard. It barely chases — it drifts and lazily
+// creeps toward the player when close. It never lunges or bites; brushing its
+// long venomous spines is what hurts you (1 dmg + poison), resolved by a
+// dedicated collide() block in game.js. canBite()=>false keeps it out of
+// handleBite() and the danger telegraph.
+export class Lionfish {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = 40;
+    this.kind = 'lionfish'; this.damage = LIONFISH.damage; this.reach = 0;
+    this.state = 'drift'; this.t = 0; this.face = -1; this.flare = 0;
+    this.biteCD = 0; this.homeY = y; this.dead = false;
+  }
+  update(dt, env) {
+    const p = env.player; this.t += dt; this.biteCD = Math.max(0, this.biteCD - dt);
+    const d = dist(this.x, this.y, p.x, p.y);
+    this.face = p.x < this.x ? -1 : 1;
+    const near = d < LIONFISH.detectRange && p.alive;
+    this.flare = lerp(this.flare, near ? 1 : 0, dt * 2);
+    const driftX = Math.sin(this.t * 0.5) * LIONFISH.driftSpeed;
+    const creepX = near ? (p.x - this.x) * 0.18 : 0;
+    const creepY = near ? (p.y - this.y) * 0.18 : 0;
+    this.vx = lerp(this.vx, clamp(driftX + creepX, -LIONFISH.driftSpeed * 1.6, LIONFISH.driftSpeed * 1.6), dt * 2);
+    this.vy = lerp(this.vy, (this.homeY - this.y) * 0.5 + Math.sin(this.t * 0.4) * 12 + creepY, dt * 2);
+    this.y = colClampY(this.y + this.vy * dt, this.r * 0.4); this.x += this.vx * dt;
+  }
+  spinePoint() { return { x: this.x, y: this.y }; }
+  get hitR() { return this.r * 1.35 * (0.85 + this.flare * 0.25); }
+  canBite() { return false; }
+  telegraphing() { return false; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    drawLionfish(ctx, this.r, t, { flare: this.flare });
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------- Moray eel
+// An ambush biter anchored in a seabed burrow. Lies hidden (only the head
+// shows) until the player drifts within range at roughly its depth, then rears
+// back (windup telegraph) and LUNGES forward in an extending S-curve, then
+// retracts into the burrow. It never roams x.
+export class Moray {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = 38;
+    this.kind = 'moray'; this.damage = MORAY.damage; this.reach = MORAY.reach;
+    this.state = 'lurk'; this.t = 0; this.face = -1; this.dead = false;
+    this.biteCD = 0; this.homeY = y; this.extend = 0; this.mouth = 0; this.dir = { x: -1, y: 0 };
+  }
+  update(dt, env) {
+    const C = MORAY; this.t += dt; this.biteCD = Math.max(0, this.biteCD - dt);
+    const p = env.player; const d = dist(this.x, this.y, p.x, p.y);
+    if (this.state === 'lurk' || this.state === 'windup') this.face = p.x < this.x ? -1 : 1;
+    switch (this.state) {
+      case 'lurk':
+        this.vx = 0; this.vy = (this.homeY - this.y) * 0.6;
+        this.extend = lerp(this.extend, 0, dt * 4); this.mouth = lerp(this.mouth, 0, dt * 5);
+        if (d < C.detectRange && Math.abs(p.y - this.y) < C.reach && p.alive && this.biteCD <= 0) { this.state = 'windup'; this.t = 0; }
+        break;
+      case 'windup':
+        this.vx *= 0.8; this.vy *= 0.8;
+        this.extend = lerp(this.extend, 0, dt * 6); this.mouth = Math.min(1, this.mouth + dt / C.windup);
+        if (this.t >= C.windup) { const a = Math.atan2(p.y - this.y, p.x - this.x); this.dir = { x: Math.cos(a), y: Math.sin(a) }; this.state = 'lunge'; this.t = 0; }
+        break;
+      case 'lunge': {
+        const f = Math.min(1, this.t / C.lungeDur);
+        this.extend = Math.sin(f * Math.PI);
+        this.vx = this.dir.x * C.lungeSpeed * (1 - f);
+        this.vy = this.dir.y * C.lungeSpeed * (1 - f) * 0.6;
+        this.mouth = 1;
+        if (this.t >= C.lungeDur) { this.state = 'rest'; this.t = 0; this.biteCD = 0.6; }
+        break;
+      }
+      case 'rest':
+        this.vx *= 0.8; this.vy = (this.homeY - this.y) * 0.8;
+        this.extend = lerp(this.extend, 0, dt * 5); this.mouth = Math.max(0, this.mouth - dt * 3);
+        if (this.t >= C.rest) this.state = 'lurk';
+        break;
+    }
+    this.y = colClampY(this.y + this.vy * dt, this.r * 0.4); this.x += this.vx * dt;
+  }
+  bitePoint() {
+    const ext = this.face * (0.5 + this.extend * 2.6) * this.r;
+    return { x: this.x + ext, y: this.y + this.dir.y * this.extend * 1.4 * this.r };
+  }
+  canBite() { return this.state === 'lunge' && this.extend > 0.4 && this.biteCD <= 0; }
+  telegraphing() { return this.state === 'windup'; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    if (this.state === 'windup') telegraph(ctx, t, this.r);
+    drawMoray(ctx, this.r, t, {
+      extend: this.extend, mouth: this.mouth,
+      windup: this.state === 'windup' ? Math.min(1, this.t / MORAY.windup) : 0,
+    });
+    ctx.restore();
+  }
+}
+
+// ----------------------------------------------------------- Electric ray
+// A slow torpedo ray. Drifts and flaps until the player wanders inside
+// detectRange, then CHARGES in place (telegraph), then DISCHARGES a radial
+// shock. Contact during the brief discharge window deals 1 damage + stun; the
+// threat is the shock radius, not a bite (handleBite skips kind 'torpedo';
+// a dedicated radial check in collide() resolves the zap).
+export class ElectricRay {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = 50;
+    this.kind = 'torpedo'; this.damage = TORPEDO.damage; this.reach = TORPEDO.shockRadius;
+    this.state = 'drift'; this.t = 0; this.face = -1;
+    this.charge = 0; this.discharge = 0; this.shockR = 0;
+    this.homeY = y; this.biteCD = 0; this.dead = false;
+  }
+  update(dt, env) {
+    this.t += dt; this.biteCD = Math.max(0, this.biteCD - dt);
+    const p = env.player; const d = dist(this.x, this.y, p.x, p.y);
+    if (this.state === 'drift' || this.state === 'rest') this.face = p.x < this.x ? -1 : 1;
+    switch (this.state) {
+      case 'drift':
+        this.vx = Math.sin(this.t * 0.5) * 26;
+        this.vy = (this.homeY - this.y) * 0.5 + Math.sin(this.t * 0.4) * 12;
+        this.charge = lerp(this.charge, 0, dt * 4); this.discharge = 0;
+        if (d < TORPEDO.detectRange && p.alive && this.biteCD <= 0) { this.state = 'charge'; this.t = 0; }
+        break;
+      case 'charge':
+        this.vx *= 0.86; this.vy *= 0.86;
+        this.charge = Math.min(1, this.t / TORPEDO.chargeTime);
+        if (this.t >= TORPEDO.chargeTime) { this.state = 'discharge'; this.t = 0; this.shockR = 0; }
+        break;
+      case 'discharge':
+        this.vx *= 0.9; this.vy *= 0.9;
+        this.discharge = 1 - this.t / TORPEDO.dischargeTime;
+        this.shockR = TORPEDO.shockRadius * Math.min(1, this.t / TORPEDO.dischargeTime);
+        this.charge = 1;
+        if (this.t >= TORPEDO.dischargeTime) { this.state = 'rest'; this.t = 0; this.biteCD = TORPEDO.rest; }
+        break;
+      case 'rest':
+        this.vx *= 0.9; this.vy *= 0.9;
+        this.charge = lerp(this.charge, 0, dt * 3); this.discharge = 0;
+        if (this.t >= TORPEDO.rest) this.state = 'drift';
+        break;
+    }
+    this.y = colClampY(this.y + this.vy * dt, this.r * 0.4); this.x += this.vx * dt;
+  }
+  bitePoint() { return { x: this.x, y: this.y }; }
+  shockRadius() { return TORPEDO.shockRadius; }
+  canBite() { return this.state === 'discharge' && this.biteCD <= 0; }
+  telegraphing() { return this.state === 'charge'; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    drawElectricRay(ctx, this.r, t, { charge: this.charge, discharge: this.discharge });
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------- Crab
+// A seabed scuttler: walks the floor with a stepping gait, claws idly open and
+// shut. When the player drifts near AND low, it raises the crusher claw (windup
+// telegraph) then SNAPS forward for a committed, dodgeable pinch. Stays pinned
+// to the floor band.
+export class Crab {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = 34;
+    this.kind = 'crab'; this.damage = CRAB.damage; this.reach = CRAB.reach;
+    this.state = 'cruise'; this.t = 0; this.face = -1; this.dead = false;
+    this.biteCD = 0; this.homeY = y;
+    this.walk = Math.random() * TAU; this.snap = 0; this.wind = 0; this.dir = { x: -1, y: 0 };
+  }
+  update(dt, env) {
+    const p = env.player; this.t += dt; this.biteCD = Math.max(0, this.biteCD - dt);
+    const d = dist(this.x, this.y, p.x, p.y);
+    if (this.state !== 'snap') this.face = p.x < this.x ? -1 : 1;
+    const floor = seabedLimit(this.r);
+    const near = d < CRAB.detectRange && p.alive;
+    const low = p.y > floor - CRAB.reach * 1.4;
+    switch (this.state) {
+      case 'cruise':
+        this.vx = (near ? this.face * CRAB.speed : Math.sin(this.t * 0.7) * CRAB.speed * 0.5);
+        this.vy = (this.homeY - this.y) * 2;
+        this.snap = lerp(this.snap, 0, dt * 4); this.wind = lerp(this.wind, 0, dt * 6);
+        if (near && low && d < CRAB.reach * 1.6 && this.biteCD <= 0) { this.state = 'windup'; this.t = 0; }
+        break;
+      case 'windup':
+        this.vx *= 0.7; this.vy = (this.homeY - this.y) * 2;
+        this.wind = Math.min(1, this.wind + dt / CRAB.windup);
+        this.snap = lerp(this.snap, 0.15, dt * 6);
+        this.dir = { x: this.face, y: 0 };
+        if (this.t >= CRAB.windup) { this.state = 'snap'; this.t = 0; }
+        break;
+      case 'snap':
+        this.vx = this.dir.x * CRAB.snapSpeed;
+        this.vy = (this.homeY - this.y) * 2;
+        this.wind = lerp(this.wind, 0, dt * 10);
+        this.snap = Math.min(1, this.snap + dt / Math.max(0.001, CRAB.snapDur * 0.5));
+        if (this.t >= CRAB.snapDur) { this.state = 'rest'; this.t = 0; this.biteCD = CRAB.rest; }
+        break;
+      case 'rest':
+        this.vx *= 0.85; this.vy = (this.homeY - this.y) * 2;
+        this.snap = lerp(this.snap, 0, dt * 3);
+        if (this.t >= CRAB.rest) this.state = 'cruise';
+        break;
+    }
+    this.walk += dt * (4 + Math.abs(this.vx) * 0.03);
+    this.y = colClampY(this.y + this.vy * dt, this.r * 0.4); this.x += this.vx * dt;
+  }
+  bitePoint() { return { x: this.x + this.face * this.r * 1.3, y: this.y - this.r * 0.1 }; }
+  canBite() { return this.state === 'snap' && this.biteCD <= 0; }
+  telegraphing() { return this.state === 'windup'; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    if (this.state === 'windup') telegraph(ctx, t, this.r);
+    drawCrab(ctx, this.r, t, { walk: this.walk, snap: this.snap, wind: this.wind, move: Math.min(1, Math.abs(this.vx) / 90) });
+    ctx.restore();
+  }
+}
+
+// --------------------------------------------------------------- Giant grouper
+// A big, slow ambush gulper. Lurks nearly still, breathing. When the player
+// drifts in FRONT of it and close, it opens a huge mouth (windup telegraph) and
+// GULPS — a brief suction that drags the player toward the maw — then lunges
+// forward a short way and snaps shut for a heavy 2-damage bite.
+export class Grouper {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0; this.r = 70;
+    this.kind = 'grouper'; this.damage = GROUPER.damage; this.reach = GROUPER.reach;
+    this.state = 'lurk'; this.t = 0; this.face = -1; this.gape = 0; this.suck = 0;
+    this.dir = { x: -1, y: 0 }; this.biteCD = 0; this.homeY = y; this.dead = false;
+  }
+  update(dt, env) {
+    this.t += dt; this.biteCD = Math.max(0, this.biteCD - dt);
+    const p = env.player; const d = dist(this.x, this.y, p.x, p.y);
+    if (this.state !== 'lunge') this.face = p.x < this.x ? -1 : 1;
+    const inFront = (p.x - this.x) * this.face > -this.r * 0.3;
+    switch (this.state) {
+      case 'lurk':
+        this.vx = lerp(this.vx, Math.sin(this.t * 0.4) * 10, dt * 2);
+        this.vy = lerp(this.vy, (this.homeY - this.y) * 0.5 + Math.sin(this.t * 0.5) * 8, dt * 2);
+        this.gape = lerp(this.gape, 0, dt * 3); this.suck = lerp(this.suck, 0, dt * 4);
+        if (d < GROUPER.detectRange && inFront && p.alive && this.biteCD <= 0) { this.state = 'windup'; this.t = 0; }
+        break;
+      case 'windup': {
+        this.vx = lerp(this.vx, -this.face * 24, dt * 4); this.vy = lerp(this.vy, 0, dt * 3);
+        this.gape = Math.min(1, this.gape + dt / GROUPER.windup);
+        this.suck = this.gape;
+        const mp = this.bitePoint();
+        const dx = mp.x - p.x, dy = mp.y - p.y, dl = Math.hypot(dx, dy) || 1;
+        const falloff = clamp(1 - dl / (GROUPER.detectRange * 1.1), 0, 1);
+        const pull = GROUPER.suction * falloff * this.gape * dt;
+        if (p.alive && !p.captured) { p.vx += (dx / dl) * pull; p.vy += (dy / dl) * pull; }
+        if (this.t >= GROUPER.windup) { const a = Math.atan2(p.y - this.y, p.x - this.x); this.dir = { x: Math.cos(a), y: Math.sin(a) }; this.state = 'lunge'; this.t = 0; }
+        break;
+      }
+      case 'lunge':
+        this.vx = this.dir.x * GROUPER.lungeSpeed; this.vy = this.dir.y * GROUPER.lungeSpeed;
+        this.gape = 1; this.suck = lerp(this.suck, 0, dt * 6);
+        if (this.t >= GROUPER.lungeDur) { this.state = 'rest'; this.t = 0; this.biteCD = GROUPER.rest; }
+        break;
+      case 'rest':
+        this.vx *= 0.86; this.vy *= 0.86;
+        this.gape = Math.max(0, this.gape - dt * 4); this.suck = lerp(this.suck, 0, dt * 4);
+        if (this.t >= GROUPER.rest) { this.state = 'lurk'; this.homeY = colClampY(this.y, this.r * 0.4); }
+        break;
+    }
+    this.y = colClampY(this.y + this.vy * dt, this.r * 0.4); this.x += this.vx * dt;
+  }
+  bitePoint() { return { x: this.x + this.face * this.r * 1.05, y: this.y + this.r * 0.12 }; }
+  canBite() { return this.state === 'lunge' && this.biteCD <= 0; }
+  telegraphing() { return this.state === 'windup'; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y); ctx.scale(this.face, 1);
+    if (this.state === 'windup') telegraph(ctx, t, this.r);
+    drawGrouper(ctx, this.r, t, { gape: this.gape, suck: this.suck });
+    ctx.restore();
+  }
+}
+
 // ------------------------------------------------------------- Pufferfish
 export class Puffer {
   constructor(x, y) {
@@ -732,6 +1130,46 @@ export class Current {
   contains(x, y) { return x > this.x0 && x < this.x1 && y > this.y0 && y < this.y1; }
 }
 
+// --------------------------------------------------- Whirlpool (pull field)
+// A slow rotating vortex. No direct damage — it drags you toward its eye (and
+// gently spins you) so it can pull you into mines, urchins, predators. The pull
+// is applied to the player in game.collide(); this class only spins + draws.
+export class Whirlpool {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.r = WHIRLPOOL.radius;
+    this.t = Math.random() * 6; this.spin = Math.random() * TAU; this.dead = false;
+  }
+  update(dt) { this.t += dt; this.spin += dt * WHIRLPOOL.swirl; }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y);
+    drawWhirlpool(ctx, this.r, this.t, { spin: this.spin });
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------- Sea vent (push field)
+// A hydrothermal vent on the seabed. Its hot column shoves the player strongly
+// UPWARD while they're inside it (and a touch toward centre so you don't skim
+// the edge forever). The push is applied in game.collide(). `y` = floor mouth.
+export class SeaVent {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.r = VENT.radius; this.colH = VENT.column; this.t = Math.random() * 6; this.dead = false;
+  }
+  update(dt) { this.t += dt; }
+  inColumn(px, py) {
+    if (py > this.y + this.r * 0.4 || py < this.y - this.colH) return false;
+    const up = clamp((this.y - py) / this.colH, 0, 1);
+    const halfW = this.r * (1 - up * 0.5);
+    return Math.abs(px - this.x) < halfW;
+  }
+  render(ctx, t) {
+    ctx.save(); ctx.translate(this.x, this.y);
+    drawSeaVent(ctx, this.r, this.t, { active: 1, colH: this.colH });
+    ctx.restore();
+  }
+}
+
 // --------------------------------------------------------- Particle pool
 export class Particles {
   constructor(max = 460) {
@@ -742,8 +1180,8 @@ export class Particles {
   spawn(x, y, kind, vx = 0, vy = 0, opts = {}) {
     const pr = this.pool[this.head]; this.head = (this.head + 1) % this.max;
     pr.x = x; pr.y = y; pr.vx = vx; pr.vy = vy; pr.kind = kind;
-    pr.life = pr.maxLife = opts.life ?? (kind === 'bubble' ? 2.4 : kind === 'ring' ? 0.5 : kind === 'blood' ? 1.9 : kind === 'gore' ? 2.2 : 0.8);
-    pr.size = opts.size ?? (kind === 'bubble' ? 2 + Math.random() * 4 : kind === 'ring' ? 10 : kind === 'blood' ? 2 + Math.random() * 5 : kind === 'gore' ? 7 + Math.random() * 9 : 3 + Math.random() * 4);
+    pr.life = pr.maxLife = opts.life ?? (kind === 'bubble' ? 2.4 : kind === 'ring' ? 0.5 : kind === 'blood' ? 1.9 : kind === 'gore' ? 2.2 : kind === 'wake' ? 0.55 : 0.8);
+    pr.size = opts.size ?? (kind === 'bubble' ? 2 + Math.random() * 4 : kind === 'ring' ? 10 : kind === 'blood' ? 2 + Math.random() * 5 : kind === 'gore' ? 7 + Math.random() * 9 : kind === 'wake' ? 3 + Math.random() * 5 : 3 + Math.random() * 4);
     pr.color = opts.color ?? null; pr.seed = Math.random() * 100;
   }
   burst(x, y, kind, n, spd, opts) {
@@ -762,6 +1200,7 @@ export class Particles {
       else if (pr.kind === 'foam') { pr.vy += 60 * dt; }
       else if (pr.kind === 'ring') { pr.size += 320 * dt; }
       else if (pr.kind === 'glow') { pr.vy -= 6 * dt; pr.vx *= 0.99; }
+      else if (pr.kind === 'wake') { pr.vx *= 0.9; pr.vy *= 0.9; pr.size += 30 * dt; }
     }
   }
   render(ctx) {
@@ -777,6 +1216,7 @@ export class Particles {
       else if (pr.kind === 'foam') { ctx.fillStyle = rgba('#eaf6f7', a * 0.8); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
       else if (pr.kind === 'ring') { ctx.strokeStyle = rgba(pr.color || P.danger, a * 0.8); ctx.lineWidth = 3 * a + 1; ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.stroke(); }
       else if (pr.kind === 'glow') { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = rgba(pr.color || P.bio, a * 0.7); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); ctx.restore(); }
+      else if (pr.kind === 'wake') { ctx.fillStyle = rgba('#dff3f7', a * 0.22); ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.size, 0, TAU); ctx.fill(); }
     }
   }
 }

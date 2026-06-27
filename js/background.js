@@ -5,7 +5,24 @@
 import { REF_H, WATER, PALETTE as P, WAVE } from './config.js';
 import { TAU, hash1, rgba, mixHex, lerp, clamp } from './utils.js';
 import { godrays, makePaper, wash } from './draw.js';
-import { drawTuna, drawWhale } from './sprites.js';
+import { drawTuna, drawWhale, drawSeagrass, drawAnemone, drawTubeworm, drawGlowStalk } from './sprites.js';
+
+// Per-region seabed art. `floor` is the SUNLIT base gradient (top→bottom);
+// render() mixes it toward `deep` by the zone's dark factor, so dark zones still
+// sink to black. `decor` selects the screen-space ambient plant scatter. `tex`
+// tweaks the floor texture pass (pebble density + tint, ripple strength, moss).
+const ZONE_ART = {
+  shallows: { floor: ['#e8d49a', '#c2a467'], decor: 'seagrass', tex: { peb: 16, pebC: '#cdb98a', ripple: 1.0, moss: 0.0 } },
+  kelp:     { floor: ['#b8a878', '#6f6347'], decor: 'seagrass', tex: { peb: 34, pebC: '#7d6b45', ripple: 0.7, moss: 0.5 } },
+  drift:    { floor: ['#9fb0a8', '#5e6f6b'], decor: 'sparse',   tex: { peb: 8,  pebC: '#869a93', ripple: 0.5, moss: 0.1 } },
+  bloom:    { floor: ['#6a5f86', '#3b3256'], decor: 'anemone',  tex: { peb: 6,  pebC: '#574b73', ripple: 0.4, moss: 0.0 } },
+  deep:     { floor: ['#4a4a52', '#23242b'], decor: 'tubeworm', tex: { peb: 10, pebC: '#3c3c44', ripple: 0.3, moss: 0.0 } },
+  twilight: { floor: ['#1c2230', '#0c1018'], decor: 'glowstalk', tex: { peb: 8, pebC: '#222a3a', ripple: 0.3, moss: 0.0 } },
+  lane:     { floor: ['#2e3640', '#161c24'], decor: 'debris',   tex: { peb: 22, pebC: '#222932', ripple: 0.4, moss: 0.0 } },
+  trench:   { floor: ['#14202c', '#050b13'], decor: 'glowstalk', tex: { peb: 12, pebC: '#10202c', ripple: 0.3, moss: 0.0, veins: true } },
+  spawn:    { floor: ['#ecdcae', '#c9b07e'], decor: 'seagrass', tex: { peb: 18, pebC: '#d4bd8a', ripple: 1.0, moss: 0.0 } },
+};
+const DEFAULT_ART = ZONE_ART.shallows;
 
 export class Background {
   constructor() { this.paper = null; this.t = 0; }
@@ -16,6 +33,7 @@ export class Background {
     const { w, h, scale, camX } = view;
     const sy = (wy) => wy * scale;
     const light = 1 - dark;             // how lit the scene is
+    const art = ZONE_ART[zoneId] || DEFAULT_ART;
 
     // 1. base vertical wash: zone tint -> deep navy (darker zones sink to black)
     const deep = mixHex(P.deepNavy, '#02060d', dark);
@@ -69,6 +87,25 @@ export class Background {
       ctx.restore();
     }
 
+    // 4c. marine snow (drift/deep, sinking) + bloom spores (bloom, rising violet)
+    const snow = (zoneId === 'drift' || zoneId === 'deep');
+    const spore = (zoneId === 'bloom');
+    if (snow || spore) {
+      ctx.save();
+      const par = -camX * 0.45;
+      const col = spore ? '#c9a6e6' : '#dfe9ee';
+      const rise = spore ? -1 : 1;
+      for (let i = 0; i < 22; i++) {
+        let bx = (i * 167.7 + par) % (w + 60); if (bx < 0) bx += w + 60;
+        const drift = ((t * (8 + hash1(i) * 10) * rise) % h + h) % h;
+        let by = (h * (0.2 + hash1(i * 5) * 0.7) + drift * rise) % h;
+        if (by < 0) by += h;
+        ctx.fillStyle = rgba(col, (0.18 + 0.12 * Math.sin(t + i)) * (0.4 + light * 0.6));
+        ctx.beginPath(); ctx.arc(bx, by, (1 + hash1(i) * 1.6) * scale, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // 5. surface — layered translucent swells + a bright crest + foam
     const surfH = sy(WATER.surfaceBand);
     const waveAt = (x, a, b) => surfH
@@ -97,20 +134,52 @@ export class Background {
       }
     }
 
-    // 6. sandy seabed (foreground, scrolls 1:1; darkens with depth)
+    // 5b. shipping-lane: faint boat hull silhouettes drifting on the surface
+    if (zoneId === 'lane') {
+      ctx.save(); ctx.globalAlpha = 0.18;
+      ctx.fillStyle = mixHex(P.deepNavy, '#000', 0.3);
+      const bspan = w + 900;
+      for (let i = 0; i < 3; i++) {
+        let bx = ((-camX * 0.3 - t * 10 + i * 360) % bspan + bspan) % bspan - 120;
+        const by = sy(WATER.surfaceBand) * 0.92;
+        const bw = (70 + hash1(i * 5) * 50) * scale;
+        ctx.beginPath();
+        ctx.moveTo(bx - bw, by); ctx.lineTo(bx + bw, by);
+        ctx.lineTo(bx + bw * 0.6, by + bw * 0.28); ctx.lineTo(bx - bw * 0.6, by + bw * 0.28);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // 6. seabed (foreground, scrolls 1:1; sunlit base mixed toward deep by dark)
     const sandTop = floorY;
     const sand = ctx.createLinearGradient(0, sandTop, 0, h);
-    sand.addColorStop(0, mixHex('#c9b386', deep, dark * 0.8));
-    sand.addColorStop(1, mixHex('#8f7a52', deep, dark * 0.85));
+    sand.addColorStop(0, mixHex(art.floor[0], deep, dark * 0.8));
+    sand.addColorStop(1, mixHex(art.floor[1], deep, dark * 0.85));
     ctx.fillStyle = sand;
     ctx.beginPath();
     ctx.moveTo(0, h);
     ctx.lineTo(0, sandTop + Math.sin((camX) * 0.02 + t) * 4);
-    const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * scale + Math.sin((x + camX) * 0.06) * 3 * scale;
+    const rip = art.tex.ripple;
+    const floorYAt = (x) => sandTop + Math.sin((x + camX) * 0.02 + t * 0.6) * 5 * rip * scale + Math.sin((x + camX) * 0.06) * 3 * rip * scale;
     for (let x = 0; x <= w; x += 18) ctx.lineTo(x, floorYAt(x));
     ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
 
-    // 6b. caustics — rippling sunlight on the sand (only where it's lit)
+    // 6a. trench bio veins glowing in the rock cracks
+    if (art.tex.veins) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(P.bio, 0.10); ctx.lineWidth = 1.5 * scale;
+      for (let i = 0; i < 7; i++) {
+        let vx = (i * 233.1 - camX) % (w + 80); if (vx < 0) vx += w + 80;
+        const vy = floorYAt(vx) + (12 + hash1(i * 7) * (h - sandTop) * 0.5);
+        ctx.beginPath(); ctx.moveTo(vx, floorYAt(vx) + 6);
+        ctx.quadraticCurveTo(vx + (hash1(i) - 0.5) * 40 * scale, (floorYAt(vx) + vy) / 2, vx + (hash1(i * 3) - 0.5) * 24 * scale, vy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 6b. caustics — rippling sunlight on the floor (only where it's lit)
     if (light > 0.25) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       ctx.beginPath();
@@ -124,15 +193,26 @@ export class Background {
       ctx.restore();
     }
 
-    // pebbles
-    for (let i = 0; i < 26; i++) {
+    // pebbles / floor debris (zone-driven count + tint)
+    for (let i = 0; i < art.tex.peb; i++) {
       let px = (i * 173.3 - camX) % (w + 60); if (px < 0) px += w + 60;
       const py = sandTop + (10 + hash1(i * 5) * (h - sandTop) * 0.7) * 0.6 + 6;
-      ctx.fillStyle = rgba(i % 2 ? '#7d6b45' : '#b7a073', 0.7 * (0.4 + light * 0.6));
-      ctx.beginPath(); ctx.arc(px, clamp(py, sandTop + 6, h - 4), (2 + hash1(i) * 4) * scale, 0, TAU); ctx.fill();
+      const pc = i % 2 ? mixHex(art.tex.pebC, '#000', 0.18) : art.tex.pebC;
+      ctx.fillStyle = rgba(pc, 0.7 * (0.4 + light * 0.6));
+      const pr = (2 + hash1(i) * 4) * scale;
+      if (art.decor === 'debris' && i % 3 === 0) {
+        ctx.save(); ctx.translate(px, clamp(py, sandTop + 6, h - 4)); ctx.rotate(hash1(i * 9) * TAU);
+        ctx.fillRect(-pr, -pr * 0.6, pr * 2, pr * 1.2); ctx.restore();
+      } else {
+        ctx.beginPath(); ctx.arc(px, clamp(py, sandTop + 6, h - 4), pr, 0, TAU); ctx.fill();
+      }
     }
-    // dark contour line on the sand top
-    ctx.strokeStyle = rgba('#6b5836', 0.5); ctx.lineWidth = 2 * scale;
+
+    // 6c. ambient seabed plants (screen-space, parallax, culled by zone)
+    this.drawSeabedDecor(ctx, view, t, light, art, floorYAt);
+
+    // dark contour line on the floor top
+    ctx.strokeStyle = rgba(mixHex(art.floor[1], '#000', 0.3), 0.5); ctx.lineWidth = 2 * scale;
     ctx.beginPath();
     for (let x = 0; x <= w; x += 18) { const yy = floorYAt(x); if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy); }
     ctx.stroke();
@@ -185,6 +265,40 @@ export class Background {
         ctx.save(); ctx.translate(fx, fy); ctx.scale(-1, 1); drawTuna(ctx, sc.r * scale, t, i * 1.3 + s); ctx.restore();
       }
       ctx.restore();
+    }
+  }
+
+  // ambient seabed plants, drawn in SCREEN space at mid-foreground parallax and
+  // culled to the screen. Plant kind chosen by the zone's art entry.
+  drawSeabedDecor(ctx, view, t, light, art, floorYAt) {
+    if (art.decor === 'debris') return;              // lane: no plants
+    const { w, scale, camX } = view;
+    const par = -camX * 0.85;                        // near-foreground parallax
+    const span = w + 360;
+    const count = art.decor === 'sparse' ? 4
+                : art.decor === 'anemone' ? 6
+                : art.decor === 'tubeworm' ? 6
+                : art.decor === 'glowstalk' ? 7 : 9;  // seagrass densest
+    for (let i = 0; i < count; i++) {
+      let bx = (i * 197.3 + par) % span; if (bx < 0) bx += span; bx -= 180;
+      if (bx < -120 || bx > w + 120) continue;
+      const seed = i * 13 + 1;
+      const fy = floorYAt(bx) + 4 * scale;
+      const H = (54 + hash1(seed) * 46) * scale * (art.decor === 'glowstalk' ? 1.3 : 1);
+      const flow = Math.sin(t * 0.42 + bx * 0.012) * 0.5;
+      const fade = art.decor === 'glowstalk' ? 1 : (0.45 + light * 0.55);
+      ctx.save(); ctx.translate(bx, fy); ctx.globalAlpha = fade;
+      switch (art.decor) {
+        case 'seagrass':
+          drawSeagrass(ctx, H, t, seed, flow, 0, light > 0.4 ? '#6db96a' : '#4f8255'); break;
+        case 'anemone':  drawAnemone(ctx, H * 0.8, t, seed, flow, 0); break;
+        case 'tubeworm': drawTubeworm(ctx, H, t, seed, flow, 0); break;
+        case 'glowstalk': drawGlowStalk(ctx, H, t, seed, flow, 0); break;
+        case 'sparse':
+          if (i % 2 === 0) drawSeagrass(ctx, H * 0.7, t, seed, flow, 0, '#7f8f86');
+          break;
+      }
+      ctx.globalAlpha = 1; ctx.restore();
     }
   }
 

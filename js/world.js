@@ -4,7 +4,7 @@
 // it. (rocks/corals are still returned as empty arrays for back-compat.)
 import { WORLD, WATER, REF_H } from './config.js';
 import { makeRng } from './utils.js';
-import { Anchor, Urchin, Mine, Hook, PlasticBag, Booster, Plankton, Kelp, Current } from './entities.js';
+import { Anchor, Urchin, Mine, Hook, PlasticBag, Booster, Plankton, Kelp, Current, Whirlpool, SeaVent } from './entities.js';
 
 export function zoneIndexAt(x) {
   const f = x / WORLD.goalDistance;
@@ -31,7 +31,7 @@ export function generateWorld(seed) {
   const G = WORLD.goalDistance;
   const rocks = [], corals = [];   // retired — kept empty for back-compat
   const anchors = [], urchins = [], mines = [], hooks = [], bags = [], boosters = [];
-  const plankton = [], kelp = [], currents = [], spawners = [];
+  const plankton = [], kelp = [], currents = [], spawners = [], whirlpools = [], vents = [];
   const boosterType = () => rng.pick(['nurse', 'nurse', 'nurse', 'swift', 'shield']);
   const dropBooster = (x) => boosters.push(new Booster(x, colY(rng, 90), boosterType()));
 
@@ -55,23 +55,28 @@ export function generateWorld(seed) {
     switch (z) {
       case 'shallows':
         if (rng.chance(0.4)) spawners.push({ x, type: 'swordfish', y: colY(rng, 120) });
+        if (rng.chance(0.34)) spawners.push({ x, type: 'crab', y: floorY(rng, 8) });
         break;
       case 'kelp':
         if (rng.chance(0.42)) urchins.push(new Urchin(x, floorY(rng, 6), rng.range(22, 34), Math.floor(rng() * 1e6)));
         if (rng.chance(0.42)) spawners.push({ x, type: 'swordfish', y: colY(rng, 120) });
         if (rng.chance(0.32)) spawners.push({ x, type: 'barracuda', y: colY(rng, 120) });
+        if (rng.chance(0.3)) spawners.push({ x, type: 'lionfish', y: colY(rng, 120) });
+        if (rng.chance(0.34)) spawners.push({ x, type: 'crab', y: floorY(rng, 8) });
         break;
       case 'drift':
         if (rng.chance(0.5)) currents.push(currentAt(x, rng, rng.chance(0.3)));
         if (rng.chance(0.42)) spawners.push({ x: x + rng.range(20, 120), type: 'jelly', y: colY(rng, 90) });
         if (rng.chance(0.32)) spawners.push({ x, type: 'barracuda', y: colY(rng, 120) });
         if (rng.chance(0.28)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 90)));
+        if (rng.chance(0.3)) whirlpools.push(new Whirlpool(x + rng.range(40, 160), colY(rng, 200)));
         break;
       case 'bloom':
         for (let k = 0, n = rng.int(2, 5); k < n; k++) spawners.push({ x: x + rng.range(-70, 130), type: 'jelly', y: colY(rng, 70) });
         if (rng.chance(0.5)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 80)));
         if (rng.chance(0.38)) spawners.push({ x, type: 'puffer', y: colY(rng, 110) });
         if (rng.chance(0.25)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 90)));
+        if (rng.chance(0.34)) spawners.push({ x, type: 'lionfish', y: colY(rng, 90) });
         break;
       case 'deep':
         if (rng.chance(0.45)) currents.push(currentAt(x, rng, rng.chance(0.5)));
@@ -79,12 +84,18 @@ export function generateWorld(seed) {
         if (rng.chance(0.42)) spawners.push({ x, type: 'shark', y: colY(rng, 140) });
         if (rng.chance(0.32)) spawners.push({ x, type: 'cookiecutter', y: colY(rng, 120) });
         if (rng.chance(0.08)) spawners.push({ x, type: 'orca', y: colY(rng, 170) });
+        if (rng.chance(0.3)) spawners.push({ x, type: 'torpedo', y: colY(rng, 130) });
+        if (rng.chance(0.3)) spawners.push({ x, type: 'moray', y: floorY(rng, 24) });
+        if (rng.chance(0.22)) spawners.push({ x, type: 'grouper', y: colY(rng, 150) });
+        if (rng.chance(0.28)) whirlpools.push(new Whirlpool(x + rng.range(40, 160), colY(rng, 220)));
         break;
       case 'twilight':
         if (rng.chance(0.52)) spawners.push({ x, type: 'angler', y: colY(rng, 150) });
         if (rng.chance(0.35)) spawners.push({ x, type: 'cookiecutter', y: colY(rng, 130) });
         if (rng.chance(0.3)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 100)));
         if (rng.chance(0.25)) bags.push(new PlasticBag(x + rng.range(-30, 60), colY(rng, 100)));
+        if (rng.chance(0.34)) spawners.push({ x, type: 'torpedo', y: colY(rng, 140) });
+        if (rng.chance(0.3)) vents.push(new SeaVent(x + rng.range(-20, 40), REF_H - WATER.seabedBand));
         break;
       case 'lane':
         if (rng.chance(0.6)) spawners.push({ x, type: 'boat', dir: rng.chance(0.5) ? -1 : 1 });
@@ -93,6 +104,8 @@ export function generateWorld(seed) {
         if (rng.chance(0.3)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 90)));
         if (rng.chance(0.28)) anchors.push(new Anchor(x + rng.range(-20, 20), floorY(rng, 30), rng.range(54, 78)));
         if (rng.chance(0.3)) spawners.push({ x, type: 'shark', y: colY(rng, 140) });
+        if (rng.chance(0.3)) spawners.push({ x, type: 'crab', y: floorY(rng, 8) });
+        if (rng.chance(0.24)) spawners.push({ x, type: 'grouper', y: colY(rng, 150) });
         break;
       case 'trench':
         if (rng.chance(0.46)) spawners.push({ x, type: 'squid', y: colY(rng, 150) });
@@ -100,6 +113,8 @@ export function generateWorld(seed) {
         if (rng.chance(0.3)) spawners.push({ x, type: 'cookiecutter', y: colY(rng, 130) });
         if (rng.chance(0.1)) spawners.push({ x, type: 'orca', y: colY(rng, 170) });
         if (rng.chance(0.4)) mines.push(new Mine(x + rng.range(-30, 60), colY(rng, 90)));
+        if (rng.chance(0.34)) spawners.push({ x, type: 'moray', y: floorY(rng, 24) });
+        if (rng.chance(0.34)) vents.push(new SeaVent(x + rng.range(-20, 40), REF_H - WATER.seabedBand));
         break;
       default: // spawn — calm, generous food + a parting gift
         plankton.push(new Plankton(x, colY(rng, 70), rng.chance(0.35)));
@@ -111,5 +126,5 @@ export function generateWorld(seed) {
 
   spawners.sort((a, b) => a.x - b.x);
   const checkpoints = WORLD.zones.map((z, i) => ({ x: zoneStartX(i), zoneIdx: i }));
-  return { rocks, corals, anchors, urchins, mines, hooks, bags, boosters, plankton, kelp, currents, spawners, checkpoints, goal: G };
+  return { rocks, corals, anchors, urchins, mines, hooks, bags, boosters, plankton, kelp, currents, spawners, whirlpools, vents, checkpoints, goal: G };
 }

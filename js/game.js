@@ -5,7 +5,7 @@
 import {
   REF_H, WATER, WORLD, COMBAT, BOAT, PUFFER, SQUID, JELLY, MINE, URCHIN, HOOK,
   PLASTIC, WAVE, STATUS, SEAGULL, BOOSTERS, UPGRADES, RARITY, LOOTBOX, SKINS,
-  DEFAULT_SKIN, PALETTE as P,
+  DEFAULT_SKIN, LIONFISH, TORPEDO, WHIRLPOOL, VENT, ECONOMY, PALETTE as P,
 } from './config.js';
 import { clamp, lerp, dist, TAU, rgba, mixHex, hash1 } from './utils.js';
 import { Input } from './input.js';
@@ -14,7 +14,8 @@ import { Background } from './background.js';
 import { generateWorld, zoneAt, zoneIndexAt, zoneStartX } from './world.js';
 import {
   Player, Seal, Shark, Barracuda, Angler, Puffer, Squid, Boat, Jelly,
-  Swordfish, Cookiecutter, Copepod, Seagull, Particles, seabedLimit,
+  Swordfish, Cookiecutter, Copepod, Seagull, Lionfish, Crab, Grouper,
+  ElectricRay, Moray, Whirlpool, SeaVent, NurseShark, Particles, seabedLimit,
 } from './entities.js';
 import { drawSunfish, drawClam, drawEgg, drawShark } from './sprites.js';
 import { STR } from './strings.js';
@@ -22,7 +23,7 @@ import { STR } from './strings.js';
 const SAVE_KEY = 'sunfish.useless.v2';
 const FONT = (s, w = '700') => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
 const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
-const PREDATOR_TYPES = new Set(['seal', 'shark', 'orca', 'barracuda', 'angler', 'swordfish', 'cookiecutter', 'squid']);
+const PREDATOR_TYPES = new Set(['seal', 'shark', 'orca', 'barracuda', 'angler', 'swordfish', 'cookiecutter', 'squid', 'lionfish', 'moray', 'torpedo', 'crab', 'grouper']);
 
 function freshSave() {
   return { eggs: 0, laidTotal: 0, best: 0, runs: 0, wins: 0, mute: false, upg: {}, skins: [DEFAULT_SKIN], skin: DEFAULT_SKIN };
@@ -121,7 +122,7 @@ export class Game {
     this._buttons = [];
     this.view = { w: 800, h: 450, scale: 1, camX: 0, worldViewW: 800 };
     this.deathMsg = ''; this.reviveCost = 0; this.canRevive = false;
-    this.eggsTarget = 0; this.layCount = 0;
+    this.eggsTarget = 0; this.layCount = 0; this.effort = 0;
     this.loot = { phase: 'idle', t: 0, result: null, msg: null };
     this.funFact = STR.funFacts[0];
     this.gullTimer = SEAGULL.interval; this.netDrainT = 0; this.spawnCD = 0;
@@ -131,6 +132,7 @@ export class Game {
   clearEntities() {
     this.enemies = []; this.squids = []; this.puffers = []; this.jellies = [];
     this.boats = []; this.copepods = []; this.seagulls = [];
+    this.nurse = null;
   }
 
   skinObj() { return SKIN_BY_ID[this.save.skin] || SKINS[0]; }
@@ -163,12 +165,14 @@ export class Game {
     this.player.x = sx; this.player.y = REF_H * 0.5;
 
     this.clearEntities();
-    this.spawnIdx = 0; this.runEggs = 0; this.runHits = 0; this.runBanked = false; this.usedWind = false;
+    this.spawnIdx = 0; this.runPlankton = 0; this.runPoints = 0; this.runHits = 0; this.runBanked = false; this.usedWind = false;
+    this.runEggs = 0;   // now ONLY the lay mini-game tally; 0 until the spawning ground
     this.netDrainT = 0; this.spawnCD = 0;
     const sp = this.world.spawners;
     while (this.spawnIdx < sp.length && sp[this.spawnIdx].x < sx - 200) this.spawnIdx++;
 
     this.regionIdx = zoneIndexAt(this.player.x);
+    this.maxZoneReached = this.regionIdx;
     this.checkpointX = sx; this.checkpointRegionIdx = this.regionIdx;
     this.recenterCamera();
     this.funFact = STR.funFacts[Math.floor(Math.random() * STR.funFacts.length)];
@@ -235,12 +239,15 @@ export class Game {
     for (const c of this.copepods) c.update(dt, env);
     for (const b of this.boats) b.update(dt);
     for (const j of this.jellies) j.update(dt);
+    if (this.nurse) { this.nurse.update(dt, pl, this.particles); if (this.nurse.dead) this.nurse = null; }
 
     const L = this.camX - 500, Rr = this.camX + this.view.worldViewW + 600;
     for (const m of this.world.mines) if (m.x > L && m.x < Rr) m.update(dt);
     for (const h of this.world.hooks) if (h.x > L && h.x < Rr) h.update(dt);
     for (const b of this.world.bags) if (b.x > L && b.x < Rr) b.update(dt);
     for (const bo of this.world.boosters) if (!bo.dead && bo.x > L && bo.x < Rr) bo.update(dt);
+    for (const w of this.world.whirlpools) if (w.x > L && w.x < Rr) w.update(dt);
+    for (const v of this.world.vents) if (v.x > L && v.x < Rr) v.update(dt);
 
     const magR = pl.magnetLevel > 0 ? 80 + pl.magnetLevel * 70 : 0;
     for (const p of this.world.plankton) {
@@ -259,14 +266,23 @@ export class Game {
     this.squids = this.squids.filter((s) => !s.dead && (pl.grabbed === s || s.x > behind));
     this.boats = this.boats.filter((b) => b.x > behind && b.x < this.camX + this.view.worldViewW + 1600);
 
-    if (this.state === 'play' && !pl.captured) this.collide();
+    if (this.state === 'play' && !pl.captured) this.collide(dt);
 
     const zi = zoneIndexAt(pl.x);
     if (zi !== this.regionIdx) {
       const forward = zi > this.regionIdx;
       this.regionIdx = zi;
-      if (forward) { this.checkpointX = Math.max(this.checkpointX, zoneStartX(zi)); this.checkpointRegionIdx = zi; this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 }; if (zi >= 4) Audio.sfx('warn'); }
-      else this.banner = { text: WORLD.zones[zi].name, life: 2.2 };
+      if (forward) {
+        this.checkpointX = Math.max(this.checkpointX, zoneStartX(zi));
+        this.checkpointRegionIdx = zi;
+        if (zi > (this.maxZoneReached || 0)) {                 // award points once per new zone
+          this.maxZoneReached = zi;
+          this.runPoints += ECONOMY.pointsPerCheckpoint;
+          this.particles.spawn(pl.x, pl.y - pl.r, 'sparkle', 0, -40, { color: P.amberSoft });
+        }
+        this.banner = { text: STR.checkpoint(WORLD.zones[zi].name), life: 2.8 };
+        if (zi >= 4) Audio.sfx('warn');
+      } else this.banner = { text: WORLD.zones[zi].name, life: 2.2 };
     }
 
     if (Math.random() < 0.3) this.particles.spawn(this.camX + Math.random() * this.view.worldViewW, REF_H - WATER.seabedBand - Math.random() * 40, 'bubble', 0, -20);
@@ -316,6 +332,11 @@ export class Game {
       case 'angler': this.enemies.push(new Angler(x, s.y)); break;
       case 'swordfish': this.enemies.push(new Swordfish(x, s.y)); break;
       case 'cookiecutter': this.enemies.push(new Cookiecutter(x, s.y)); break;
+      case 'lionfish': this.enemies.push(new Lionfish(x, s.y)); break;
+      case 'moray': this.enemies.push(new Moray(x, s.y)); break;
+      case 'torpedo': this.enemies.push(new ElectricRay(x, s.y)); break;
+      case 'crab': this.enemies.push(new Crab(x, s.y)); break;
+      case 'grouper': this.enemies.push(new Grouper(x, s.y)); break;
       case 'puffer': this.puffers.push(new Puffer(x, s.y)); break;
       case 'squid': this.squids.push(new Squid(x, s.y)); break;
       case 'copepod': this.copepods.push(new Copepod(x, s.y)); break;
@@ -324,7 +345,7 @@ export class Game {
     }
   }
 
-  collide() {
+  collide(dt = 1 / 60) {
     const pl = this.player;
     const L = pl.x - 340, Rr = pl.x + 340;
 
@@ -367,6 +388,33 @@ export class Game {
       }
     }
 
+    // whirlpools — drag the player toward the eye + a gentle tangential spin.
+    // No damage; the danger is being pulled into hazards.
+    for (const w of this.world.whirlpools) {
+      if (w.x < L || w.x > Rr) continue;
+      const dx = w.x - pl.x, dy = w.y - pl.y, d = Math.hypot(dx, dy) || 1;
+      if (d < w.r) {
+        const f = 1 - d / w.r;
+        const nx = dx / d, ny = dy / d;
+        pl.vx += nx * WHIRLPOOL.pull * f * dt;
+        pl.vy += ny * WHIRLPOOL.pull * f * dt;
+        pl.vx += -ny * WHIRLPOOL.swirl * f * dt;
+        pl.vy += nx * WHIRLPOOL.swirl * f * dt;
+        if (Math.random() < 0.2 * f) this.particles.spawn(pl.x, pl.y, 'bubble', -nx * 60, -ny * 60);
+      }
+    }
+
+    // sea vents — a strong updraft inside the rising column, plus a touch of
+    // centring so you can't ride the edge. Capped + clearly telegraphed.
+    for (const v of this.world.vents) {
+      if (v.x < L || v.x > Rr) continue;
+      if (v.inColumn(pl.x, pl.y)) {
+        pl.vy -= VENT.lift * dt;
+        pl.vx += clamp(v.x - pl.x, -1, 1) * VENT.lateral * dt;
+        if (Math.random() < 0.3) this.particles.spawn(pl.x + (Math.random() - 0.5) * v.r, pl.y, 'bubble', 0, -120);
+      }
+    }
+
     for (const h of this.world.hooks) {
       if (h.biteCD > 0 || h.x < L || h.x > Rr) continue;
       const bp = h.baitPoint();
@@ -377,6 +425,34 @@ export class Game {
 
     // biting predators (one array, per-instance damage)
     this.handleBite(this.enemies);
+
+    // lionfish — a contact hazard: brushing its venomous spines stings + poisons.
+    // (canBite()=>false so handleBite/telegraph skip it; handled here.)
+    for (const e of this.enemies) {
+      if (e.kind !== 'lionfish' || e.x < L || e.x > Rr) continue;
+      const sp = e.spinePoint();
+      if (dist(sp.x, sp.y, pl.x, pl.y) < pl.hitR + e.hitR) {
+        pl.poison = Math.max(pl.poison, STATUS.poisonTime);
+        if (pl.hit(LIONFISH.damage, (pl.x - e.x) * 1.4, (pl.y - e.y) * 1.4, Audio, this.particles)) this.runHits++;
+      }
+    }
+
+    // electric ray — radial shock (not a bite): the discharge ring zaps + stuns.
+    for (const e of this.enemies) {
+      if (e.kind !== 'torpedo' || !e.canBite() || e.x < L || e.x > Rr) continue;
+      const d = dist(e.x, e.y, pl.x, pl.y);
+      if (d < e.shockRadius() + pl.hitR) {
+        const nx = (pl.x - e.x) / (d || 1), ny = (pl.y - e.y) / (d || 1);
+        if (pl.hit(TORPEDO.damage, nx * 240, ny * 240, Audio, this.particles)) {
+          pl.stunFor(TORPEDO.stun);
+          e.biteCD = Math.max(e.biteCD, 1.0);
+          this.runHits++;
+          this.particles.spawn(e.x, e.y, 'ring', 0, 0, { color: P.bio, life: 0.5, size: 16 });
+          for (let i = 0; i < 10; i++) this.particles.spawn(pl.x, pl.y, 'glow', (Math.random() - 0.5) * 160, (Math.random() - 0.5) * 160, { color: P.bio, life: 0.6 });
+          Audio.sfx('hurt');
+        }
+      }
+    }
 
     for (const pf of this.puffers) {
       if (!pf.spiky || pf.x < L || pf.x > Rr) continue;
@@ -420,18 +496,21 @@ export class Game {
       if (bo.dead || bo.x < L - 40 || bo.x > Rr + 40) continue;
       if (dist(bo.x, bo.y, pl.x, pl.y) < pl.hitR + bo.r + 10) {
         bo.dead = true; pl.applyBoost(bo.type);
+        if (bo.type === 'nurse') this.nurse = new NurseShark(pl.x - pl.face * pl.r * 1.7, pl.y + pl.r * 0.9);
         const def = BOOSTERS.find((d) => d.id === bo.type);
         this.banner = { text: (def ? def.name : 'Booster') + '!', life: 2.0 };
         Audio.sfx('buy'); this.particles.burst(bo.x, bo.y, 'sparkle', 14, 160, { color: def ? def.color : '#ffd97a' });
       }
     }
 
-    // plankton -> eggs
-    const eggMul = 1 + this.stats().roeLevel * 0.35;
+    // plankton -> collected count + run points (NO eggs mid-run)
     for (const p of this.world.plankton) {
       if (p.dead || p.x < L - 60 || p.x > Rr + 60) continue;
       if (dist(p.x, p.y, pl.x, pl.y) < pl.hitR + p.r + 14) {
-        p.dead = true; this.runEggs += p.value * eggMul; pl.mouth = 1;
+        p.dead = true;
+        this.runPlankton += p.value;
+        this.runPoints += p.value * ECONOMY.pointsPerPlankton;
+        pl.mouth = 1;
         Audio.sfx('pickup');
         this.particles.burst(p.x, p.y, 'sparkle', p.value > 1 ? 12 : 6, 150, { color: P.amberSoft });
         if (p.value > 1 && pl.hp < pl.maxHp && Math.random() < 0.4) pl.hp++;
@@ -442,6 +521,7 @@ export class Game {
   handleBite(arr) {
     const pl = this.player;
     for (const e of arr) {
+      if (e.kind === 'torpedo') continue;   // ray uses a radial shock, not a bite
       if (!e.canBite || !e.canBite()) continue;
       const bp = e.bitePoint();
       if (dist(bp.x, bp.y, pl.x, pl.y) < pl.hitR + e.r * 0.5 + 16) {
@@ -508,25 +588,57 @@ export class Game {
 
   beginLaying() {
     if (this.state !== 'play') return;
-    this.state = 'laying'; this.layT = 0; this.layCount = 0;
-    this.player.vx *= 0.3; Audio.sfx('eggs');
+    this.state = 'laying';
+    this.layT = 0; this.layCount = 0; this.effort = 0; this.layDone = false;
+    this.player.vx *= 0.3; this.player.vy *= 0.3;
+    Audio.sfx('eggs');
+    // freeze the egg-formula inputs at the moment laying begins
     const s = this.stats();
-    const bonus = Math.round((30 + this.player.hp * 22) * (1 + s.roeLevel * 0.4));
-    this.eggsTarget = Math.floor(this.runEggs) + bonus;
+    this.layBaseEggs = ECONOMY.layBase
+      + this.runPlankton * ECONOMY.planktonMul
+      + this.player.hp * ECONOMY.healthMul;
+    this.layRoeMul = 1 + s.roeLevel;
+    // nurse pet heals to full + then swims away
+    if (this.nurse) this.nurse.beginLayHeal(this.player, this.particles);
+  }
+  layEggsAt(effort) {
+    return Math.round(this.layBaseEggs * (0.5 + 0.5 * clamp(effort, 0, 1)) * this.layRoeMul);
   }
   updateLaying(dt) {
     this.layT += dt;
     const pl = this.player;
     pl.vx *= 0.92; pl.vy *= 0.92; pl.mouth = 0.4;
-    const dur = 3.4, prog = clamp(this.layT / dur, 0, 1);
-    this.layCount = Math.floor(this.eggsTarget * prog);
-    if (Math.random() < 0.9) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, 'egg', -50 - Math.random() * 70, (Math.random() - 0.5) * 70, { life: 3.8, size: 5 + Math.random() * 4 });
-    if (Math.random() < 0.3) this.particles.spawn(pl.x, pl.y, 'sparkle', (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: P.amberSoft });
-    if (this.layT > dur + 0.6) {
+    const dur = ECONOMY.layDuration;
+
+    // ---- read effort from input: continuous wiggle + discrete taps ----
+    let drive = 0;
+    if (Input.active) drive = clamp(Input.speed / 900, 0, 1.4);
+    const dm = Math.hypot(Input.dir.x, Input.dir.y);
+    if (dm > drive) drive = dm;
+    this.effort += drive * ECONOMY.effortPerInput * 60 * dt;
+    if (Input.anyJustPressed()) this.effort += 0.06;
+    this.effort -= ECONOMY.effortDrainPerSec * dt;
+    this.effort = clamp(this.effort, 0, 1);
+
+    // ---- eggs tick toward the live target ----
+    this.eggsTarget = this.layEggsAt(this.effort);
+    this.layCount = Math.round(lerp(this.layCount, this.eggsTarget, clamp(dt * 4, 0, 1)));
+
+    const eggRate = 0.3 + this.effort * 0.9;
+    if (Math.random() < eggRate) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, 'egg', -50 - Math.random() * 70, (Math.random() - 0.5) * 70, { life: 3.8, size: 5 + Math.random() * 4 });
+    if (Math.random() < 0.3 + this.effort * 0.4) this.particles.spawn(pl.x, pl.y, 'sparkle', (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: P.amberSoft });
+
+    // ---- finish: lock the eggs at the effort achieved at the buzzer ----
+    if (this.layT >= dur && !this.layDone) {
+      this.layDone = true;
+      this.eggsTarget = this.layEggsAt(this.effort);
+      this.layCount = this.eggsTarget;
       this.save.eggs += this.eggsTarget;
       this.save.laidTotal = (this.save.laidTotal || 0) + this.eggsTarget;
       this.save.wins = (this.save.wins || 0) + 1;
-      this.save.best = this.world.goal; this.runBanked = true; this.persist();
+      this.save.best = this.world.goal;
+      this.runBanked = true;
+      this.persist();
       this.ending = this.pickEnding();
       this.state = 'win';
     }
@@ -535,6 +647,7 @@ export class Game {
   die(cause) {
     if (this.state !== 'play') return;
     this.deathCause = cause;
+    if (this.nurse) this.nurse.leave();
     const msgs = STR.deaths;
     const byCause = { caught: 2, squid: 10 };
     this.deathMsg = cause in byCause ? msgs[byCause[cause]] : msgs[Math.floor(Math.random() * msgs.length)];
@@ -557,6 +670,7 @@ export class Game {
     pl.flap += dt * 0.5;
     if (Math.random() < 0.5) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, 'bubble', (Math.random() - 0.5) * 30, -30);
     if (this.player.wounds.length && Math.random() < 0.4) this.particles.spawn(pl.x + (Math.random() - 0.5) * pl.r, pl.y, 'blood', (Math.random() - 0.5) * 20, 24, { life: 1.4 });
+    if (this.nurse) { this.nurse.update(dt, pl, this.particles); if (this.nurse.dead) this.nurse = null; }
     const camTarget = clamp(pl.x - this.view.worldViewW * 0.34, 0, Math.max(0, this.world.goal + 240 - this.view.worldViewW));
     this.camX = lerp(this.camX, camTarget, clamp(dt * 2, 0, 1));
     Input.takeTap(); Input.anyJustPressed();   // death is unskippable — flush & ignore input
@@ -573,7 +687,10 @@ export class Game {
   bankRun() {
     if (this.runBanked) return; this.runBanked = true;
     this.save.best = Math.max(this.save.best, Math.round(this.player.x));
-    this.save.eggs += Math.floor(this.runEggs);
+    // death banks a consolation of half your collected plankton, as eggs
+    const consolation = Math.floor(this.runPlankton * ECONOMY.consolationPlankton);
+    this.save.eggs += consolation;
+    this.runConsolation = consolation;
     this.save.runs = (this.save.runs || 0) + 1;
     this.persist();
   }
@@ -741,6 +858,8 @@ export class Game {
     for (const p of this.world.plankton) if (!p.dead && inView(p.x)) p.render(ctx);
     for (const h of this.world.hooks) if (inView(h.x)) h.render(ctx, this.t);
     for (const m of this.world.mines) if (!m.dead && inView(m.x)) m.render(ctx, this.t);
+    for (const w of this.world.whirlpools) if (inView(w.x)) w.render(ctx, this.t);
+    for (const v of this.world.vents) if (inView(v.x)) v.render(ctx, this.t);
     for (const b of this.world.bags) if (inView(b.x)) b.render(ctx, this.t);
     for (const j of this.jellies) j.render(ctx, this.t);
     for (const s of this.puffers) s.render(ctx, this.t);
@@ -751,6 +870,7 @@ export class Game {
     for (const s of this.squids) s.render(ctx, this.t);
     for (const b of this.boats) b.render(ctx, this.t, this.player.caught === b);
     for (const g of this.seagulls) g.render(ctx, this.t);
+    if (this.nurse) this.nurse.render(ctx, this.t);
     if (this.player) this.player.render(ctx, this.t);
     this.particles.render(ctx);
     if (this.world.goal > L && this.world.goal < Rr + 400) this.drawGoal(ctx);
@@ -867,10 +987,19 @@ export class Game {
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, view.h);
     }
     for (let i = 0; i < pl.maxHp; i++) this.drawHeart(ctx, pad + i * 30, pad + 12, 11, i < pl.hp);
-    ctx.font = FONT(18); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = P.amber; ctx.beginPath(); ctx.ellipse(w - pad - 78, pad + 12, 6, 7.5, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = P.foam; ctx.fillText(`${Math.floor(this.runEggs)}`, w - pad, pad + 12);
-    ctx.font = FONT(9, '600'); ctx.fillStyle = rgba(P.foam, 0.6); ctx.fillText(STR.hudEggs, w - pad, pad + 28);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    // POINTS — the primary run score
+    ctx.font = FONT(20, '800'); ctx.fillStyle = P.amber;
+    ctx.fillText(`${this.runPoints.toLocaleString()}`, w - pad, pad + 10);
+    ctx.font = FONT(9, '600'); ctx.fillStyle = rgba(P.foam, 0.6);
+    ctx.fillText(STR.hudPoints, w - pad, pad + 25);
+    // PLANKTON — collected count, with a small bio-green dot
+    const py2 = pad + 44;
+    ctx.fillStyle = P.bio; ctx.beginPath(); ctx.arc(w - pad - 64, py2, 5, 0, TAU); ctx.fill();
+    ctx.font = FONT(15, '700'); ctx.fillStyle = P.foam; ctx.textAlign = 'right';
+    ctx.fillText(`${Math.floor(this.runPlankton)}`, w - pad, py2);
+    ctx.font = FONT(9, '600'); ctx.fillStyle = rgba(P.foam, 0.6);
+    ctx.fillText(STR.hudPlankton, w - pad, py2 + 13);
 
     this.drawProgress(ctx, view);
     this.drawStatusChips(ctx, view, pad);
@@ -904,8 +1033,28 @@ export class Game {
     }
     if (this.state === 'laying') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = FONT(34, '800'); ctx.fillStyle = P.amber; ctx.fillText(`${this.layCount.toLocaleString()}`, w / 2, view.h * 0.18);
-      ctx.font = FONT(14, '600'); ctx.fillStyle = rgba(P.foam, 0.85); ctx.fillText(STR.hudEggs, w / 2, view.h * 0.18 + 26);
+      // ticking egg count
+      ctx.font = FONT(40, '800'); ctx.fillStyle = P.amber;
+      ctx.fillText(`${this.layCount.toLocaleString()}`, w / 2, view.h * 0.16);
+      ctx.font = FONT(14, '600'); ctx.fillStyle = rgba(P.foam, 0.85);
+      ctx.fillText(STR.hudEggs, w / 2, view.h * 0.16 + 28);
+      // prompt (pulses)
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 9);
+      ctx.font = FONT(16, '700'); ctx.fillStyle = P.foam;
+      ctx.fillText(STR.layPrompt, w / 2, view.h * 0.30); ctx.globalAlpha = 1;
+      // EFFORT meter
+      const bw = Math.min(300, w * 0.55), bx = (w - bw) / 2, by = view.h * 0.36;
+      ctx.font = FONT(10, '800'); ctx.fillStyle = rgba(P.foam, 0.85);
+      ctx.fillText(STR.layEffort, w / 2, by - 12);
+      ctx.fillStyle = rgba('#06243a', 0.5); roundRect(ctx, bx, by, bw, 16, 8); ctx.fill();
+      const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      g.addColorStop(0, '#2e7d8a'); g.addColorStop(1, P.amber);
+      ctx.fillStyle = g; roundRect(ctx, bx, by, bw * clamp(this.effort, 0, 1), 16, 8); ctx.fill();
+      ctx.strokeStyle = rgba(P.foam, 0.4); ctx.lineWidth = 1.5; roundRect(ctx, bx, by, bw, 16, 8); ctx.stroke();
+      // countdown
+      const left = Math.max(0, ECONOMY.layDuration - this.layT);
+      ctx.font = FONT(12, '700'); ctx.fillStyle = rgba(P.foam, 0.7);
+      ctx.fillText(`${left.toFixed(1)}s`, w / 2, by + 34);
     }
   }
 
@@ -1177,7 +1326,7 @@ export class Game {
     ctx.font = FONT(12.5, '500'); ctx.fillStyle = rgba(P.foam, 0.78); wrapText(ctx, this.funFact, w / 2, h * 0.46, Math.min(640, w * 0.84), 16);
     ctx.font = FONT(13, '700'); ctx.fillStyle = P.amberSoft;
     const pct = Math.round((this.player.x / WORLD.goalDistance) * 100);
-    ctx.fillText(`+${Math.floor(this.runEggs)} eggs banked   ·   reached ${pct}% · ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.56);
+    ctx.fillText(`${this.runPoints.toLocaleString()} pts · +${this.runConsolation || 0} eggs · reached ${pct}% · ${WORLD.zones[this.regionIdx].name}`, w / 2, h * 0.56);
     const free = this.stats().wind > 0 && !this.usedWind;
     const canRevive = free || this.save.eggs >= this.reviveCost;
     let bx = w / 2 - (canRevive ? 250 : 125);

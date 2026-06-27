@@ -14,6 +14,10 @@ export const STR = {
 
   hudEggs: 'eggs',
   hudBest: 'furthest',
+  hudPoints: 'points',
+  hudPlankton: 'plankton',
+  layPrompt: 'WIGGLE! drag back & forth — tap fast!',
+  layEffort: 'EFFORT',
 
   // shop
   shopTitle: 'Tide-Pool Outfitters',

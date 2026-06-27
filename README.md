@@ -26,24 +26,32 @@ result, enable **GitHub Pages** on this branch — see below.
 >
 > **Hazards:** **strong currents**, sea urchins, sea mines, anchors, baited
 > hooks, **fishing nets** (you bleed while tangled), **boat propellers**,
-> **jellyfish swarms** (sting *and* slow you), and **plastic pollution** that
-> looks like a jellyfish and *poisons* you.
+> **jellyfish swarms** (sting *and* slow you), **plastic pollution** that
+> looks like a jellyfish and *poisons* you, slow **whirlpools** that drag you
+> off course, and hydrothermal **sea vents** that blast you upward.
 >
 > **Predators:** sea lions, **blue sharks**, **cookiecutter sharks** (they take a
 > round chunk — you swim on *cut like a cookie*), **swordfish** (easy straight
-> lunges early on), barracuda, anglerfish, pufferfish, **squid** (they grab), and
-> the rare boss-tier **orca**. Every wind-up shows a red **attack-area** so you
-> can read it. Bite-wounds are permanent open chunks that **slow you down** the
-> more you collect.
+> lunges early on), barracuda, anglerfish, pufferfish, **squid** (they grab),
+> venomous **lionfish** (brush their spines and you're poisoned), ambush
+> **moray eels** that lunge from seabed burrows, **electric rays** that charge up
+> and unleash a stunning shock, scuttling **crabs** that snap along the floor,
+> and hulking **groupers** that *suck you in* to a cavernous gulp — plus the rare
+> boss-tier **orca**. Every wind-up shows a red **attack-area** so you can read
+> it. Bite-wounds are permanent open chunks that **slow you down** the more you
+> collect.
 >
 > Your run opens with a **hatch** — you and a sibling, briefly — and ends, when
 > it ends, with a slow, sad **sink** to the seabed.
 >
-> Grab **boosters** mid-run (Nurse Shark heal-over-time, Swift Current, Bubble
-> Shield). Region **checkpoints** let you revive. Reach the Spawning Ground, lay
-> your eggs (the lifetime tally climbs), win — then spend eggs on **loot-box
-> clams** for 16 collectible **skins**. Die, gorily, and try again a little less
-> useless each run.
+> Eat drifting **plankton** and bank **points** at every region checkpoint. Grab
+> **boosters** mid-run: **Swift Current**, **Bubble Shield**, and a **Nurse
+> Shark** that latches on like a **pet** and follows you. Reach the Spawning
+> Ground and **lay your eggs** in a frantic *wiggle* mini-game — the more plankton
+> you ate, the healthier you are, and the harder you wiggle, the bigger the clutch
+> (your nurse-shark pet heals you to full first, then drifts away). Eggs are the
+> meta currency: spend them on **loot-box clams** for 16 collectible **skins**.
+> Die, gorily, and try again a little less useless each run.
 
 ## Play
 
@@ -70,9 +78,12 @@ finale. The crossing is long, but every region boundary is a **checkpoint**:
 when you die you can **revive** there (free with *Second Wind*, otherwise for
 eggs).
 
-The **eggs** you gather from food are the currency. Dying still banks what you
-collected; finishing lays the whole clutch (and adds to a lifetime total). Spend
-eggs two ways:
+Mid-run you collect **plankton** and score **points** (a checkpoint bonus each
+new region, plus a little per plankton). **Eggs** are minted only at the finish:
+the Spawning Ground runs a *wiggle* mini-game whose clutch size scales with the
+plankton you ate, your remaining health, and how hard you work the effort meter.
+Dying still banks a small consolation of eggs from your plankton. Spend eggs two
+ways:
 
 - *Tide-Pool Outfitters* — permanent upgrades: more hearts, faster swimming, the
   dash, slippery skin, lucky roe, a gill **magnet**, thick hide, a **head start**
