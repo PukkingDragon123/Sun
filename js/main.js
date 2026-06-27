@@ -69,3 +69,4 @@ requestAnimationFrame(frame);
 
 // expose for quick debugging
 window.__sunfish = game;
+window.__audio = Audio;
