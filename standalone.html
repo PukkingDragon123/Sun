@@ -210,21 +210,31 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
   };
   var ECONOMY = {
     pointsPerCheckpoint: 250,
-    // awarded each time you cross into a NEW forward zone
-    pointsPerPlankton: 10,
-    // per unit of plankton.value collected
-    layBase: 20,
-    // flat eggs floor at the lay mini-game
-    planktonMul: 4,
-    // eggs per plankton collected
-    healthMul: 8,
-    // eggs per current hp at lay time
+    // flat reward for reaching a NEW forward zone
+    pointsPerPlankton: 5,
+    // small immediate feedback per plankton eaten
+    checkpointPlanktonBonus: 20,
+    // EXTRA points per plankton gathered since the last checkpoint
+    cpClutchPerPlankton: 3,
+    // checkpoint clutch: eggs per plankton-since
+    // lay mini-game: CLICK / TAP as fast as you can. eggs accrue from sustained
+    // effort over the window; the plankton you collected MULTIPLIES the whole clutch.
+    layBase: 16,
+    // base eggs/sec component
+    healthMul: 6,
+    // + eggs/sec per current hp at lay time
+    planktonBonusPer: 0.04,
+    // clutch multiplier per plankton (25 plankton => x2)
     layDuration: 6,
     // mini-game length (s)
-    effortDrainPerSec: 0.55,
-    // effort meter bleeds down when you stop
-    effortPerInput: 0.02,
-    // effort gained per unit of input drive
+    layMinRate: 0.15,
+    // guaranteed baseline accrual even without clicking
+    effortDrainPerSec: 0.5,
+    // effort meter bleeds down so you must keep going
+    effortPerClick: 0.09,
+    // each click / tap / keypress kicks the meter up
+    effortPerInput: 0.012,
+    // drag-speed contribution (secondary to clicking)
     consolationPlankton: 0.5
     // death banks floor(runPlankton * this) as eggs
   };
@@ -5773,9 +5783,10 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     hudBest: "furthest",
     hudPoints: "points",
     hudPlankton: "plankton",
-    layPrompt: "WIGGLE! drag back & forth \u2014 tap fast!",
-    layEffort: "EFFORT",
+    layPrompt: "CLICK / TAP as fast as you can!",
+    layEffort: "FRENZY",
     cpLay: "laying a clutch\u2026",
+    checkpointHit: "CHECKPOINT!",
     // shop
     shopTitle: "Tide-Pool Outfitters",
     shopBlurb: "Spend hard-won eggs. Become a marginally less useless fish.",
@@ -6274,8 +6285,14 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
           const newZone = zi > (this.maxZoneReached || 0);
           if (newZone) {
             this.maxZoneReached = zi;
-            this.runPoints += ECONOMY.pointsPerCheckpoint;
-            this.particles.spawn(pl.x, pl.y - pl.r, "sparkle", 0, -40, { color: PALETTE.amberSoft });
+            const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
+            const bonus = ECONOMY.pointsPerCheckpoint + Math.round(since * ECONOMY.checkpointPlanktonBonus);
+            this.runPoints += bonus;
+            this.cpPointsAwarded = bonus;
+            this.cpPointsPlankton = since;
+            Audio.sfx("reveal");
+            this.particles.spawn(pl.x, pl.y, "ring", 0, 0, { color: PALETTE.amber, life: 0.6, size: 14 });
+            this.particles.burst(pl.x, pl.y - pl.r * 0.4, "sparkle", 22, 210, { color: PALETTE.amberSoft });
           }
           if (zi >= 4) Audio.sfx("warn");
           if (newZone && zi < WORLD.zones.length - 1) this.beginCheckpointLay(zi);
@@ -6658,7 +6675,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
       this.cpPlanktonMark = this.runPlankton;
       const s = this.stats();
-      this.cpEggs = Math.max(0, Math.round((since * ECONOMY.planktonMul + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
+      this.cpEggs = Math.max(0, Math.round((since * ECONOMY.cpClutchPerPlankton + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
       this.cpLaid = 0;
       this.save.eggs += this.cpEggs;
       this.save.laidTotal = (this.save.laidTotal || 0) + this.cpEggs;
@@ -6698,16 +6715,17 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       this.layCount = 0;
       this.effort = 0;
       this.layDone = false;
+      this.layTaps = 0;
+      this.runEggs = 0;
+      this._laySfxT = 0;
       this.player.vx *= 0.3;
       this.player.vy *= 0.3;
       Audio.sfx("eggs");
-      const s = this.stats();
-      this.layBaseEggs = ECONOMY.layBase + this.runPlankton * ECONOMY.planktonMul + this.player.hp * ECONOMY.healthMul;
-      this.layRoeMul = 1 + s.roeLevel;
       if (this.nurse) this.nurse.beginLayHeal(this.player, this.particles);
-    }
-    layEggsAt(effort) {
-      return Math.round(this.layBaseEggs * (0.5 + 0.5 * clamp(effort, 0, 1)) * this.layRoeMul);
+      const s = this.stats();
+      this.layRoeMul = 1 + s.roeLevel;
+      this.layPlanktonMul = 1 + this.runPlankton * ECONOMY.planktonBonusPer;
+      this.layRatePerSec = (ECONOMY.layBase + this.player.hp * ECONOMY.healthMul) * this.layRoeMul * this.layPlanktonMul;
     }
     updateLaying(dt) {
       this.layT += dt;
@@ -6716,23 +6734,31 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       pl.vy *= 0.92;
       pl.mouth = 0.4;
       const dur = ECONOMY.layDuration;
+      if (Input.anyJustPressed()) {
+        this.effort = clamp(this.effort + ECONOMY.effortPerClick, 0, 1);
+        this.layTaps = (this.layTaps || 0) + 1;
+        this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, "egg", -60 - Math.random() * 80, (Math.random() - 0.5) * 90, { life: 3.4, size: 5 + Math.random() * 4 });
+      }
       let drive = 0;
-      if (Input.active) drive = clamp(Input.speed / 900, 0, 1.4);
+      if (Input.active) drive = clamp(Input.speed / 900, 0, 1.2);
       const dm = Math.hypot(Input.dir.x, Input.dir.y);
       if (dm > drive) drive = dm;
       this.effort += drive * ECONOMY.effortPerInput * 60 * dt;
-      if (Input.anyJustPressed()) this.effort += 0.06;
       this.effort -= ECONOMY.effortDrainPerSec * dt;
       this.effort = clamp(this.effort, 0, 1);
-      this.eggsTarget = this.layEggsAt(this.effort);
-      this.layCount = Math.round(lerp(this.layCount, this.eggsTarget, clamp(dt * 4, 0, 1)));
-      const eggRate = 0.3 + this.effort * 0.9;
-      if (Math.random() < eggRate) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, "egg", -50 - Math.random() * 70, (Math.random() - 0.5) * 70, { life: 3.8, size: 5 + Math.random() * 4 });
-      if (Math.random() < 0.3 + this.effort * 0.4) this.particles.spawn(pl.x, pl.y, "sparkle", (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: PALETTE.amberSoft });
+      const rate = (ECONOMY.layMinRate + (1 - ECONOMY.layMinRate) * this.effort) * this.layRatePerSec;
+      this.runEggs += rate * dt;
+      this.layCount = Math.floor(this.runEggs);
+      this.eggsTarget = this.layCount;
+      this._laySfxT = (this._laySfxT || 0) + dt;
+      if (this.effort > 0.05 && this._laySfxT > 0.11) {
+        this._laySfxT = 0;
+        Audio.sfx("pickup");
+      }
+      if (Math.random() < 0.2 + this.effort * 0.5) this.particles.spawn(pl.x, pl.y, "sparkle", (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: PALETTE.amberSoft });
       if (this.layT >= dur && !this.layDone) {
         this.layDone = true;
-        this.eggsTarget = this.layEggsAt(this.effort);
-        this.layCount = this.eggsTarget;
+        this.eggsTarget = this.layCount = Math.floor(this.runEggs);
         this.save.eggs += this.eggsTarget;
         this.save.laidTotal = (this.save.laidTotal || 0) + this.eggsTarget;
         this.save.wins = (this.save.wins || 0) + 1;
@@ -7384,48 +7410,71 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
       if (this.state === "cplay") {
         ctx3.textAlign = "center";
         ctx3.textBaseline = "middle";
-        ctx3.font = FONT(34, "800");
+        ctx3.globalAlpha = clamp(this.cpT * 3, 0, 1);
+        wobblyText(ctx3, STR.checkpointHit, w / 2, view2.h * 0.3, 26, PALETTE.amberSoft, 6);
+        ctx3.globalAlpha = 1;
+        ctx3.font = FONT(14, "800");
         ctx3.fillStyle = PALETTE.amber;
-        ctx3.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view2.h * 0.18);
-        ctx3.font = FONT(13, "600");
+        const plk = this.cpPointsPlankton ? `   \xB7   +${this.cpPointsPlankton} plankton bonus` : "";
+        ctx3.fillText(`+${(this.cpPointsAwarded || 0).toLocaleString()} pts${plk}`, w / 2, view2.h * 0.3 + 28);
+        ctx3.font = FONT(32, "800");
+        ctx3.fillStyle = PALETTE.amber;
+        ctx3.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view2.h * 0.155);
+        ctx3.font = FONT(12, "600");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
-        ctx3.fillText(STR.cpLay, w / 2, view2.h * 0.18 + 24);
+        ctx3.fillText(STR.cpLay, w / 2, view2.h * 0.155 + 22);
       }
       if (this.state === "laying") {
         ctx3.textAlign = "center";
         ctx3.textBaseline = "middle";
-        ctx3.font = FONT(40, "800");
+        const pop = 1 + this.effort * 0.07;
+        ctx3.save();
+        ctx3.translate(w / 2, view2.h * 0.15);
+        ctx3.scale(pop, pop);
+        ctx3.font = FONT(44, "800");
         ctx3.fillStyle = PALETTE.amber;
-        ctx3.fillText(`${this.layCount.toLocaleString()}`, w / 2, view2.h * 0.16);
+        ctx3.fillText(`${this.layCount.toLocaleString()}`, 0, 0);
+        ctx3.restore();
         ctx3.font = FONT(14, "600");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
-        ctx3.fillText(STR.hudEggs, w / 2, view2.h * 0.16 + 28);
-        ctx3.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 9);
-        ctx3.font = FONT(16, "700");
+        ctx3.fillText(STR.hudEggs, w / 2, view2.h * 0.15 + 32);
+        ctx3.font = FONT(15, "800");
+        ctx3.fillStyle = PALETTE.bio;
+        ctx3.fillText(`plankton \xD7${(this.layPlanktonMul || 1).toFixed(1)}`, w / 2, view2.h * 0.235);
+        ctx3.globalAlpha = 0.55 + 0.45 * Math.sin(this.t * 10);
+        ctx3.font = FONT(17, "800");
         ctx3.fillStyle = PALETTE.foam;
-        ctx3.fillText(STR.layPrompt, w / 2, view2.h * 0.3);
+        ctx3.fillText(STR.layPrompt, w / 2, view2.h * 0.31);
         ctx3.globalAlpha = 1;
-        const bw = Math.min(300, w * 0.55), bx = (w - bw) / 2, by = view2.h * 0.36;
+        const bw = Math.min(320, w * 0.55), bx = (w - bw) / 2, by = view2.h * 0.37;
         ctx3.font = FONT(10, "800");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.85);
         ctx3.fillText(STR.layEffort, w / 2, by - 12);
         ctx3.fillStyle = rgba("#06243a", 0.5);
-        roundRect(ctx3, bx, by, bw, 16, 8);
+        roundRect(ctx3, bx, by, bw, 18, 9);
         ctx3.fill();
         const g = ctx3.createLinearGradient(bx, 0, bx + bw, 0);
         g.addColorStop(0, "#2e7d8a");
-        g.addColorStop(1, PALETTE.amber);
+        g.addColorStop(1, this.effort > 0.7 ? "#ff7a4d" : PALETTE.amber);
         ctx3.fillStyle = g;
-        roundRect(ctx3, bx, by, bw * clamp(this.effort, 0, 1), 16, 8);
+        roundRect(ctx3, bx, by, bw * clamp(this.effort, 0, 1), 18, 9);
         ctx3.fill();
+        if (this.effort > 0.7) {
+          ctx3.save();
+          ctx3.globalCompositeOperation = "lighter";
+          ctx3.fillStyle = rgba("#ffd97a", (this.effort - 0.7) * 0.6);
+          roundRect(ctx3, bx, by, bw * this.effort, 18, 9);
+          ctx3.fill();
+          ctx3.restore();
+        }
         ctx3.strokeStyle = rgba(PALETTE.foam, 0.4);
         ctx3.lineWidth = 1.5;
-        roundRect(ctx3, bx, by, bw, 16, 8);
+        roundRect(ctx3, bx, by, bw, 18, 9);
         ctx3.stroke();
         const left = Math.max(0, ECONOMY.layDuration - this.layT);
         ctx3.font = FONT(12, "700");
         ctx3.fillStyle = rgba(PALETTE.foam, 0.7);
-        ctx3.fillText(`${left.toFixed(1)}s`, w / 2, by + 34);
+        ctx3.fillText(`${left.toFixed(1)}s`, w / 2, by + 36);
       }
     }
     drawStatusChips(ctx3, view2, pad) {
@@ -7805,7 +7854,7 @@ canvas{display:block;touch-action:none;-webkit-tap-highlight-color:transparent;c
     }
     pickEnding() {
       const e = STR.endings;
-      if (this.eggsTarget >= 300) return e.bountiful;
+      if (this.eggsTarget >= 450) return e.bountiful;
       if (this.runHits === 0) return e.perfect;
       if (this.player.wounds.length >= 4) return e.battered;
       return e.plain;

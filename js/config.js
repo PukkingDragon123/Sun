@@ -153,15 +153,21 @@ export const NURSE = {
 
 // ---- economy: collect plankton, score points, lay eggs via a mini-game -----
 export const ECONOMY = {
-  pointsPerCheckpoint: 250,   // awarded each time you cross into a NEW forward zone
-  pointsPerPlankton: 10,      // per unit of plankton.value collected
-  layBase: 20,                // flat eggs floor at the lay mini-game
-  planktonMul: 4,             // eggs per plankton collected
-  healthMul: 8,               // eggs per current hp at lay time
-  layDuration: 6.0,           // mini-game length (s)
-  effortDrainPerSec: 0.55,    // effort meter bleeds down when you stop
-  effortPerInput: 0.020,      // effort gained per unit of input drive
-  consolationPlankton: 0.5,   // death banks floor(runPlankton * this) as eggs
+  pointsPerCheckpoint: 250,        // flat reward for reaching a NEW forward zone
+  pointsPerPlankton: 5,            // small immediate feedback per plankton eaten
+  checkpointPlanktonBonus: 20,     // EXTRA points per plankton gathered since the last checkpoint
+  cpClutchPerPlankton: 3,          // checkpoint clutch: eggs per plankton-since
+  // lay mini-game: CLICK / TAP as fast as you can. eggs accrue from sustained
+  // effort over the window; the plankton you collected MULTIPLIES the whole clutch.
+  layBase: 16,                     // base eggs/sec component
+  healthMul: 6,                    // + eggs/sec per current hp at lay time
+  planktonBonusPer: 0.04,          // clutch multiplier per plankton (25 plankton => x2)
+  layDuration: 6.0,                // mini-game length (s)
+  layMinRate: 0.15,                // guaranteed baseline accrual even without clicking
+  effortDrainPerSec: 0.5,          // effort meter bleeds down so you must keep going
+  effortPerClick: 0.09,            // each click / tap / keypress kicks the meter up
+  effortPerInput: 0.012,           // drag-speed contribution (secondary to clicking)
+  consolationPlankton: 0.5,        // death banks floor(runPlankton * this) as eggs
 };
 
 // ---- the journey -----------------------------------------------------------

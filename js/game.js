@@ -288,8 +288,15 @@ export class Game {
         const newZone = zi > (this.maxZoneReached || 0);
         if (newZone) {                                         // award points once per new zone
           this.maxZoneReached = zi;
-          this.runPoints += ECONOMY.pointsPerCheckpoint;
-          this.particles.spawn(pl.x, pl.y - pl.r, 'sparkle', 0, -40, { color: P.amberSoft });
+          // plankton gathered since the last checkpoint converts to EXTRA points
+          const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
+          const bonus = ECONOMY.pointsPerCheckpoint + Math.round(since * ECONOMY.checkpointPlanktonBonus);
+          this.runPoints += bonus;
+          this.cpPointsAwarded = bonus; this.cpPointsPlankton = since;
+          // a celebratory pop so the checkpoint really lands
+          Audio.sfx('reveal');
+          this.particles.spawn(pl.x, pl.y, 'ring', 0, 0, { color: P.amber, life: 0.6, size: 14 });
+          this.particles.burst(pl.x, pl.y - pl.r * 0.4, 'sparkle', 22, 210, { color: P.amberSoft });
         }
         if (zi >= 4) Audio.sfx('warn');
         // every new region checkpoint (except the final Spawning Ground, which
@@ -608,7 +615,7 @@ export class Game {
     const since = Math.max(0, this.runPlankton - (this.cpPlanktonMark || 0));
     this.cpPlanktonMark = this.runPlankton;
     const s = this.stats();
-    this.cpEggs = Math.max(0, Math.round((since * ECONOMY.planktonMul + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
+    this.cpEggs = Math.max(0, Math.round((since * ECONOMY.cpClutchPerPlankton + this.player.hp * ECONOMY.healthMul) * 0.5 * (1 + s.roeLevel)));
     this.cpLaid = 0;
     this.save.eggs += this.cpEggs;
     this.save.laidTotal = (this.save.laidTotal || 0) + this.cpEggs;
@@ -637,20 +644,18 @@ export class Game {
   beginLaying() {
     if (this.state !== 'play') return;
     this.state = 'laying';
-    this.layT = 0; this.layCount = 0; this.effort = 0; this.layDone = false;
+    this.layT = 0; this.layCount = 0; this.effort = 0; this.layDone = false; this.layTaps = 0;
+    this.runEggs = 0;            // accumulator: eggs laid this mini-game
+    this._laySfxT = 0;
     this.player.vx *= 0.3; this.player.vy *= 0.3;
     Audio.sfx('eggs');
-    // freeze the egg-formula inputs at the moment laying begins
-    const s = this.stats();
-    this.layBaseEggs = ECONOMY.layBase
-      + this.runPlankton * ECONOMY.planktonMul
-      + this.player.hp * ECONOMY.healthMul;
-    this.layRoeMul = 1 + s.roeLevel;
-    // nurse pet heals to full + then swims away
+    // nurse pet heals to full (rewarding more eggs) then swims away
     if (this.nurse) this.nurse.beginLayHeal(this.player, this.particles);
-  }
-  layEggsAt(effort) {
-    return Math.round(this.layBaseEggs * (0.5 + 0.5 * clamp(effort, 0, 1)) * this.layRoeMul);
+    // eggs accrue per second at full effort; the plankton you ate MULTIPLIES it
+    const s = this.stats();
+    this.layRoeMul = 1 + s.roeLevel;
+    this.layPlanktonMul = 1 + this.runPlankton * ECONOMY.planktonBonusPer;
+    this.layRatePerSec = (ECONOMY.layBase + this.player.hp * ECONOMY.healthMul) * this.layRoeMul * this.layPlanktonMul;
   }
   updateLaying(dt) {
     this.layT += dt;
@@ -658,29 +663,35 @@ export class Game {
     pl.vx *= 0.92; pl.vy *= 0.92; pl.mouth = 0.4;
     const dur = ECONOMY.layDuration;
 
-    // ---- read effort from input: continuous wiggle + discrete taps ----
+    // CLICK / TAP as fast as you can — each press kicks the FRENZY meter up and
+    // pops out an egg. (dragging fast helps too, but clicking is the core verb.)
+    if (Input.anyJustPressed()) {
+      this.effort = clamp(this.effort + ECONOMY.effortPerClick, 0, 1);
+      this.layTaps = (this.layTaps || 0) + 1;
+      this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, 'egg', -60 - Math.random() * 80, (Math.random() - 0.5) * 90, { life: 3.4, size: 5 + Math.random() * 4 });
+    }
     let drive = 0;
-    if (Input.active) drive = clamp(Input.speed / 900, 0, 1.4);
+    if (Input.active) drive = clamp(Input.speed / 900, 0, 1.2);
     const dm = Math.hypot(Input.dir.x, Input.dir.y);
     if (dm > drive) drive = dm;
     this.effort += drive * ECONOMY.effortPerInput * 60 * dt;
-    if (Input.anyJustPressed()) this.effort += 0.06;
     this.effort -= ECONOMY.effortDrainPerSec * dt;
     this.effort = clamp(this.effort, 0, 1);
 
-    // ---- eggs tick toward the live target ----
-    this.eggsTarget = this.layEggsAt(this.effort);
-    this.layCount = Math.round(lerp(this.layCount, this.eggsTarget, clamp(dt * 4, 0, 1)));
+    // eggs accrue from sustained effort — plankton multiplier already baked in
+    const rate = (ECONOMY.layMinRate + (1 - ECONOMY.layMinRate) * this.effort) * this.layRatePerSec;
+    this.runEggs += rate * dt;
+    this.layCount = Math.floor(this.runEggs);
+    this.eggsTarget = this.layCount;
 
-    const eggRate = 0.3 + this.effort * 0.9;
-    if (Math.random() < eggRate) this.particles.spawn(pl.x - pl.r, pl.y + (Math.random() - 0.5) * pl.r, 'egg', -50 - Math.random() * 70, (Math.random() - 0.5) * 70, { life: 3.8, size: 5 + Math.random() * 4 });
-    if (Math.random() < 0.3 + this.effort * 0.4) this.particles.spawn(pl.x, pl.y, 'sparkle', (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: P.amberSoft });
+    // a throttled little chime so a fast frenzy sounds satisfying, not spammy
+    this._laySfxT = (this._laySfxT || 0) + dt;
+    if (this.effort > 0.05 && this._laySfxT > 0.11) { this._laySfxT = 0; Audio.sfx('pickup'); }
+    if (Math.random() < 0.2 + this.effort * 0.5) this.particles.spawn(pl.x, pl.y, 'sparkle', (Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, { color: P.amberSoft });
 
-    // ---- finish: lock the eggs at the effort achieved at the buzzer ----
     if (this.layT >= dur && !this.layDone) {
       this.layDone = true;
-      this.eggsTarget = this.layEggsAt(this.effort);
-      this.layCount = this.eggsTarget;
+      this.eggsTarget = this.layCount = Math.floor(this.runEggs);
       this.save.eggs += this.eggsTarget;
       this.save.laidTotal = (this.save.laidTotal || 0) + this.eggsTarget;
       this.save.wins = (this.save.wins || 0) + 1;
@@ -1081,35 +1092,54 @@ export class Game {
     }
     if (this.state === 'cplay') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = FONT(34, '800'); ctx.fillStyle = P.amber;
-      ctx.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view.h * 0.18);
-      ctx.font = FONT(13, '600'); ctx.fillStyle = rgba(P.foam, 0.85);
-      ctx.fillText(STR.cpLay, w / 2, view.h * 0.18 + 24);
+      // celebratory header + the points you just banked (and the plankton bonus)
+      ctx.globalAlpha = clamp(this.cpT * 3, 0, 1);
+      wobblyText(ctx, STR.checkpointHit, w / 2, view.h * 0.30, 26, P.amberSoft, 6);
+      ctx.globalAlpha = 1;
+      ctx.font = FONT(14, '800'); ctx.fillStyle = P.amber;
+      const plk = this.cpPointsPlankton ? `   ·   +${this.cpPointsPlankton} plankton bonus` : '';
+      ctx.fillText(`+${(this.cpPointsAwarded || 0).toLocaleString()} pts${plk}`, w / 2, view.h * 0.30 + 28);
+      // the clutch laid at this checkpoint
+      ctx.font = FONT(32, '800'); ctx.fillStyle = P.amber;
+      ctx.fillText(`${(this.cpLaid || 0).toLocaleString()}`, w / 2, view.h * 0.155);
+      ctx.font = FONT(12, '600'); ctx.fillStyle = rgba(P.foam, 0.85);
+      ctx.fillText(STR.cpLay, w / 2, view.h * 0.155 + 22);
     }
     if (this.state === 'laying') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      // ticking egg count
-      ctx.font = FONT(40, '800'); ctx.fillStyle = P.amber;
-      ctx.fillText(`${this.layCount.toLocaleString()}`, w / 2, view.h * 0.16);
+      // ticking egg count — pops a touch while the frenzy is high
+      const pop = 1 + this.effort * 0.07;
+      ctx.save(); ctx.translate(w / 2, view.h * 0.15); ctx.scale(pop, pop);
+      ctx.font = FONT(44, '800'); ctx.fillStyle = P.amber;
+      ctx.fillText(`${this.layCount.toLocaleString()}`, 0, 0);
+      ctx.restore();
       ctx.font = FONT(14, '600'); ctx.fillStyle = rgba(P.foam, 0.85);
-      ctx.fillText(STR.hudEggs, w / 2, view.h * 0.16 + 28);
+      ctx.fillText(STR.hudEggs, w / 2, view.h * 0.15 + 32);
+      // plankton multiplier — collecting plankton pays off big here
+      ctx.font = FONT(15, '800'); ctx.fillStyle = P.bio;
+      ctx.fillText(`plankton ×${(this.layPlanktonMul || 1).toFixed(1)}`, w / 2, view.h * 0.235);
       // prompt (pulses)
-      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 9);
-      ctx.font = FONT(16, '700'); ctx.fillStyle = P.foam;
-      ctx.fillText(STR.layPrompt, w / 2, view.h * 0.30); ctx.globalAlpha = 1;
-      // EFFORT meter
-      const bw = Math.min(300, w * 0.55), bx = (w - bw) / 2, by = view.h * 0.36;
+      ctx.globalAlpha = 0.55 + 0.45 * Math.sin(this.t * 10);
+      ctx.font = FONT(17, '800'); ctx.fillStyle = P.foam;
+      ctx.fillText(STR.layPrompt, w / 2, view.h * 0.31); ctx.globalAlpha = 1;
+      // FRENZY meter (glows hot when you click fast)
+      const bw = Math.min(320, w * 0.55), bx = (w - bw) / 2, by = view.h * 0.37;
       ctx.font = FONT(10, '800'); ctx.fillStyle = rgba(P.foam, 0.85);
       ctx.fillText(STR.layEffort, w / 2, by - 12);
-      ctx.fillStyle = rgba('#06243a', 0.5); roundRect(ctx, bx, by, bw, 16, 8); ctx.fill();
+      ctx.fillStyle = rgba('#06243a', 0.5); roundRect(ctx, bx, by, bw, 18, 9); ctx.fill();
       const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-      g.addColorStop(0, '#2e7d8a'); g.addColorStop(1, P.amber);
-      ctx.fillStyle = g; roundRect(ctx, bx, by, bw * clamp(this.effort, 0, 1), 16, 8); ctx.fill();
-      ctx.strokeStyle = rgba(P.foam, 0.4); ctx.lineWidth = 1.5; roundRect(ctx, bx, by, bw, 16, 8); ctx.stroke();
+      g.addColorStop(0, '#2e7d8a'); g.addColorStop(1, this.effort > 0.7 ? '#ff7a4d' : P.amber);
+      ctx.fillStyle = g; roundRect(ctx, bx, by, bw * clamp(this.effort, 0, 1), 18, 9); ctx.fill();
+      if (this.effort > 0.7) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = rgba('#ffd97a', (this.effort - 0.7) * 0.6);
+        roundRect(ctx, bx, by, bw * this.effort, 18, 9); ctx.fill(); ctx.restore();
+      }
+      ctx.strokeStyle = rgba(P.foam, 0.4); ctx.lineWidth = 1.5; roundRect(ctx, bx, by, bw, 18, 9); ctx.stroke();
       // countdown
       const left = Math.max(0, ECONOMY.layDuration - this.layT);
       ctx.font = FONT(12, '700'); ctx.fillStyle = rgba(P.foam, 0.7);
-      ctx.fillText(`${left.toFixed(1)}s`, w / 2, by + 34);
+      ctx.fillText(`${left.toFixed(1)}s`, w / 2, by + 36);
     }
   }
 
@@ -1340,7 +1370,7 @@ export class Game {
 
   pickEnding() {
     const e = STR.endings;
-    if (this.eggsTarget >= 300) return e.bountiful;
+    if (this.eggsTarget >= 450) return e.bountiful;
     if (this.runHits === 0) return e.perfect;
     if (this.player.wounds.length >= 4) return e.battered;
     return e.plain;
