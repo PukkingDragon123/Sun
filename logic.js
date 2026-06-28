@@ -1,6 +1,5 @@
-// Solo real-time game: no server-authoritative rules are needed, but the
-// apps-engine requires a code module at the zip root. This is the documented
-// solo stub (build-game.md §1) — all gameplay lives client-side in ./js/.
+// This game is solo and real-time, so there are no server-authoritative rules;
+// all gameplay lives client-side in ./js/. This module is just a small stub.
 export const meta = { game: 'sunfish-useless-odyssey', minPlayers: 1, maxPlayers: 1 };
 export function setup() { return {}; }
 export function validateAction() { return { ok: true }; }

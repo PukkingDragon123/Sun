@@ -117,7 +117,7 @@ art/audio manifest, and the frozen numeric thresholds.
 
 ```
 index.html        page shell, boots js/main.js
-logic.js          apps-engine solo stub
+logic.js          solo stub (all gameplay lives in js/)
 js/
   config.js       all tunable numbers (one place)
   strings.js      all player-visible text

@@ -67,6 +67,9 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
+// nudge the webfont to load so canvas text uses it from the first frames
+try { if (document.fonts) { document.fonts.load('700 32px "Outfit"'); document.fonts.load('400 16px "Outfit"'); } } catch (e) {}
+
 // expose for quick debugging
 window.__sunfish = game;
 window.__audio = Audio;

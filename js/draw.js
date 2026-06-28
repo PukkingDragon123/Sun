@@ -1,6 +1,6 @@
-// Hand-drawn rendering primitives — the STYLE FORMULA realized in code:
-// "soft hand-painted watercolor-and-ink storybook illustration ... rounded
-// organic shapes with wobbly hand-inked dark-teal outlines ... soft godrays".
+// Hand-drawn rendering primitives — the whole storybook look, in code: soft
+// hand-painted watercolor-and-ink shapes with wobbly hand-inked dark-teal
+// outlines, paper grain, and soft godrays.
 import { TAU, hash1, rgba, lerp } from './utils.js';
 import { PALETTE } from './config.js';
 

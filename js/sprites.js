@@ -125,13 +125,16 @@ export function drawSunfish(ctx, R, t, st = {}) {
     }
   }
 
-  // mouth: gormless little 'o' normally, a downturned frown when sad/hurt
+  // mouth: a gentle content smile by default, an 'o' while eating, and a
+  // downturned frown only when genuinely sad/hurt.
   ctx.strokeStyle = P.ink; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
-  if (sad > 0.4) {
+  if (sad > 0.45) {
     ctx.beginPath(); ctx.arc(0.95 * R, 0.36 * R, 0.12 * R, Math.PI * 1.18, Math.PI * 1.82); ctx.stroke();
-  } else {
+  } else if (mouth > 0.12) {
     const mo = 0.045 * R + mouth * 0.06 * R;
     ctx.beginPath(); ctx.ellipse(0.95 * R, 0.24 * R, mo, mo * 1.2, 0, 0, TAU); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(0.95 * R, 0.14 * R, 0.13 * R, Math.PI * 0.16, Math.PI * 0.84); ctx.stroke();
   }
 
   if (sk.accessory) drawAccessory(ctx, R, t, sk.accessory, ex, ey);

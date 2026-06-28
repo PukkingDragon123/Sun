@@ -247,7 +247,8 @@ export class Player {
     const flashing = this.invuln > 0 && Math.floor(this.invuln * 14) % 2 === 0;
     if (flashing) ctx.globalAlpha = 0.45;
     const ratio = this.hp / Math.max(1, this.maxHp);
-    const sad = clamp((this.hp <= 1 ? 1 : ratio < 0.5 ? 0.6 : 0.25) + this.hurt * 0.5, 0, 1);
+    // a healthy fish looks content (it only turns sad when genuinely low/hurt)
+    const sad = clamp((this.hp <= 1 ? 0.85 : ratio < 0.5 ? 0.35 : 0) + this.hurt * 0.45, 0, 1);
     drawSunfish(ctx, this.r, t, {
       flap: this.flap, blink: this.blink, hurt: this.hurt, lookX: 1, mouth: this.mouth,
       dash: this.dashT > 0, skin: this.skin, wounds: this.wounds, sad,

@@ -1,11 +1,11 @@
-// All tunable numbers live here as data (game-design-system §9.5).
+// All tunable numbers live here in one place, so balancing never touches logic.
 // Coordinates are in WORLD UNITS: the visible water column is always
 // REF_H tall regardless of device; the renderer scales world->screen.
 // This keeps gameplay identical across phone, tablet and desktop.
 
 export const REF_H = 720;          // logical water-column height (world units)
 export const STEP = 1000 / 60;     // fixed simulation step (ms)
-export const DPR_CAP = 1.5;        // devicePixelRatio cap (perf law)
+export const DPR_CAP = 1.5;        // device-pixel-ratio cap (keeps fill-rate sane on retina/mobile)
 
 export const WATER = {
   surfaceBand: 96,   // wavy surface zone from the top

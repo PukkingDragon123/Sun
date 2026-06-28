@@ -1,9 +1,10 @@
-// All player-visible strings live here (game-design-system §10.3).
-// Switching language is a data change, never a code change.
+// All player-visible text lives here, so changing the wording — or the whole
+// language — is a data edit that never touches game code.
 export const STR = {
   title: 'THE USELESS FISH',
   subtitle: 'the ocean sunfish · Mola mola',
   credit: 'made with love by Pukking Dragon',
+  musicCredit: 'music · “No Surprises” by Radiohead',
 
   tapToStart: 'tap · click · press to begin',
   dragHint: 'Drag anywhere to swim — flick to dash',

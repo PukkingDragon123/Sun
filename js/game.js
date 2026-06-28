@@ -21,7 +21,7 @@ import { drawSunfish, drawClam, drawEgg, drawShark } from './sprites.js';
 import { STR } from './strings.js';
 
 const SAVE_KEY = 'sunfish.useless.v2';
-const FONT = (s, w = '700') => `${w} ${s}px "Trebuchet MS","Segoe UI",system-ui,sans-serif`;
+const FONT = (s, w = '700') => `${w} ${s}px "Outfit","Trebuchet MS","Segoe UI",system-ui,sans-serif`;
 const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s]));
 const PREDATOR_TYPES = new Set(['seal', 'shark', 'orca', 'barracuda', 'angler', 'swordfish', 'cookiecutter', 'squid', 'lionfish', 'moray', 'torpedo', 'crab', 'grouper']);
 
@@ -1247,7 +1247,8 @@ export class Game {
     ctx.font = FONT(12, '600'); ctx.fillStyle = P.amberSoft;
     const pct = Math.round((this.save.best / WORLD.goalDistance) * 100);
     ctx.fillText(`${this.save.eggs.toLocaleString()} eggs banked   ·   ${(this.save.laidTotal || 0).toLocaleString()} laid   ·   furthest ${pct}%`, w / 2, h * 0.93);
-    ctx.font = FONT(11, '600'); ctx.fillStyle = rgba(P.foam, 0.55); ctx.fillText(STR.credit, w / 2, h * 0.975);
+    ctx.font = FONT(11, '600'); ctx.fillStyle = rgba(P.foam, 0.55);
+    ctx.fillText(STR.credit + '   ·   ' + STR.musicCredit, w / 2, h * 0.975);
 
     const bw = Math.min(150, w * 0.26), bh = 44, gap = 12;
     const totalW = bw * 3 + gap * 2; let bx = w / 2 - totalW / 2; const by = h * 0.55;
@@ -1269,7 +1270,7 @@ export class Game {
     ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(fishX, fishY, fr * 2.6, 0, TAU); ctx.fill();
     for (let i = 0; i < 6; i++) { const by = fishY + fr - ((this.t * 22 + i * 60) % (fr * 2.4)); ctx.fillStyle = rgba('#dff3f7', 0.16); ctx.beginPath(); ctx.arc(fishX + Math.sin(i * 1.7 + this.t * 0.5) * fr * 0.6, by, (1.3 + i % 3) * S, 0, TAU); ctx.fill(); }
     ctx.save(); ctx.translate(fishX, fishY + Math.sin(this.t * 0.9) * 10); ctx.rotate(Math.sin(this.t * 0.6) * 0.05);
-    drawSunfish(ctx, fr, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0.12 });
+    drawSunfish(ctx, fr, this.t, { flap: this.menuFlap, blink: 1, lookX: 1, skin: this.skinObj(), sad: 0 });
     ctx.restore();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = FONT(16, '800'); ctx.fillStyle = P.foam; ctx.fillText(this.skinObj().name, fishX, fishY + fr + 26);
@@ -1414,6 +1415,9 @@ export class Game {
     this.button(ctx, 'retry', w / 2 - 190, h * 0.82, 116, 44, STR.retry, true, true);
     this.button(ctx, 'wardrobe', w / 2 - 58, h * 0.82, 116, 44, STR.toWardrobe);
     this.button(ctx, 'shop', w / 2 + 74, h * 0.82, 116, 44, STR.toShop);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = FONT(11, '600'); ctx.fillStyle = rgba(P.foam, 0.5);
+    ctx.fillText(STR.musicCredit, w / 2, h * 0.93);
   }
 
   renderDead(ctx, view) {

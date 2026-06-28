@@ -1,14 +1,14 @@
 id,role,type,description,size/ratio,style line ref,source
-sunfish_hero,player sprite,sprite,a chubby ocean sunfish mola mola with a big round flattened body and tall stubby fins,vector (scales freely),STYLE FORMULA,procedural:js/sprites.js#drawSunfish
-seal,hazard sprite (chaser),sprite,a sleek hungry seal mid-swim seen from the side,vector,STYLE FORMULA,procedural:js/sprites.js#drawSeal
-boat_hull,hazard sprite (boat; net is drawn live),sprite,the side and underside of a small wooden fishing boat with a metal propeller,vector,STYLE FORMULA,procedural:js/sprites.js#drawBoat+drawNet
-rocks,hazard sprite (static obstacle),sprite,a cluster of jagged barnacle-covered seabed rocks,vector,STYLE FORMULA,procedural:js/sprites.js#drawRock
-plankton,pickup sprite (currency/heal),sprite,a small drifting cluster of glowing plankton and krill specks,vector,STYLE FORMULA,procedural:js/sprites.js#drawPlankton
-kelp,decoration sprite (parallax),sprite,a tall strand of swaying kelp seaweed,vector,STYLE FORMULA,procedural:js/sprites.js#drawKelp
-jellyfish,hazard sprite (drifting sting),sprite,a translucent pale moon-jelly jellyfish with a domed bell and trailing tentacles,vector,STYLE FORMULA,procedural:js/sprites.js#drawJelly
-eggs,victory flourish,sprite,glowing amber-gold drifting eggs,vector,STYLE FORMULA,procedural:js/sprites.js#drawEgg
-ocean_bg,parallax background,background,deep open-ocean underwater scene with layered teal-to-navy water and soft godrays,full-frame,STYLE FORMULA,procedural:js/background.js
-seabed_tile,foreground floor,tile,rippled sandy ocean floor with small pebbles and barnacles,full-width,STYLE FORMULA,procedural:js/background.js
+sunfish_hero,player sprite,sprite,a chubby ocean sunfish mola mola with a big round flattened body and tall stubby fins,vector (scales freely),house style,procedural:js/sprites.js#drawSunfish
+seal,hazard sprite (chaser),sprite,a sleek hungry seal mid-swim seen from the side,vector,house style,procedural:js/sprites.js#drawSeal
+boat_hull,hazard sprite (boat; net is drawn live),sprite,the side and underside of a small wooden fishing boat with a metal propeller,vector,house style,procedural:js/sprites.js#drawBoat+drawNet
+rocks,hazard sprite (static obstacle),sprite,a cluster of jagged barnacle-covered seabed rocks,vector,house style,procedural:js/sprites.js#drawRock
+plankton,pickup sprite (currency/heal),sprite,a small drifting cluster of glowing plankton and krill specks,vector,house style,procedural:js/sprites.js#drawPlankton
+kelp,decoration sprite (parallax),sprite,a tall strand of swaying kelp seaweed,vector,house style,procedural:js/sprites.js#drawKelp
+jellyfish,hazard sprite (drifting sting),sprite,a translucent pale moon-jelly jellyfish with a domed bell and trailing tentacles,vector,house style,procedural:js/sprites.js#drawJelly
+eggs,victory flourish,sprite,glowing amber-gold drifting eggs,vector,house style,procedural:js/sprites.js#drawEgg
+ocean_bg,parallax background,background,deep open-ocean underwater scene with layered teal-to-navy water and soft godrays,full-frame,house style,procedural:js/background.js
+seabed_tile,foreground floor,tile,rippled sandy ocean floor with small pebbles and barnacles,full-width,house style,procedural:js/background.js
 music_drift,looping music bed,audio-music,gentle melancholic-yet-hopeful underwater drift,loop,n/a (audio),synth:js/audio.js#music
 sfx_set,sfx (swim/pickup/hurt/snare/escape/eggs/ui),audio-sfx,short isolated game sounds,short,n/a (audio),synth:js/audio.js#SFX
 sfx_ambient,ocean ambience,audio-sfx,continuous calm underwater ocean ambience,loop,n/a (audio),synth:js/audio.js#sea
